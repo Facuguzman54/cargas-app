@@ -167,6 +167,10 @@
         let barcodeStream = null;
         let barcodeDetectionActive = false;
         let selectedCameraId = '';
+        let lastDecodedKey = '';
+        let lastDecodedAt = 0;
+        let stableReadCount = 0;
+        let lastAcceptedAt = 0;
         let currentItemCount = 0;
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -247,41 +251,124 @@
             }
         }
 
+        function isInRange(value, min, max) {
+            return Number.isFinite(value) && value >= min && value <= max;
+        }
+
+        function applyParsedData(parsed) {
+            document.getElementById('field-lote').value = parsed.lote;
+            document.getElementById('field-cabezal').value = parsed.cabezal;
+            document.getElementById('field-fecha').value = parsed.fechaFab;
+            document.getElementById('field-hora').value = parsed.hora;
+            document.getElementById('field-peso').value = parsed.pesoNeto;
+            document.getElementById('field-obs').value = '';
+        }
+
+        function handleDecodedText(decodedText) {
+            const parsed = parseArcorBarcode(decodedText);
+            const now = Date.now();
+
+            if (!parsed) {
+                const onlyDigits = (decodedText || '').replace(/\D/g, '');
+                if (onlyDigits.length >= 10) {
+                    document.getElementById('field-obs').value = `Lectura no valida: ${onlyDigits.slice(0, 36)}`;
+                }
+                return;
+            }
+
+            const key = `${parsed.lote}|${parsed.cabezal}|${parsed.pesoNeto}`;
+            if (key === lastDecodedKey && (now - lastDecodedAt) <= 1500) {
+                stableReadCount++;
+            } else {
+                stableReadCount = 1;
+            }
+            lastDecodedKey = key;
+            lastDecodedAt = now;
+
+            // Exigir 2 lecturas consecutivas para evitar parseos basura por desenfoque
+            if (stableReadCount < 2) {
+                document.getElementById('field-obs').value = 'Detectado, confirmando...';
+                return;
+            }
+
+            // Evitar repetidos inmediatos del mismo frame
+            if ((now - lastAcceptedAt) < 1000) return;
+
+            lastAcceptedAt = now;
+            stableReadCount = 0;
+            vibrateDevice();
+            applyParsedData(parsed);
+        }
+
         // LIMPIEZA Y PARSEO ROBUSTO PARA GS1-128
         function parseArcorBarcode(rawCode) {
-            // Elimina prefijos comunes de simbología que inyectan algunos decodificadores (ej: ]C1, ~1, o espacios nativos)
-            let cleanCode = rawCode.replace(/^\]C1/, '').replace(/^~1/, '').replace(/\s+/g, '').trim();
-            
-            // Busca la cadena numérica continua de Arcor (debe tener al menos 23 dígitos)
-            // Esto descarta basura al inicio o final del string capturado por la cámara
-            const match = cleanCode.match(/\d{23,}/);
-            if (!match) return null;
-            
-            const code = match[0];
+            if (!rawCode) return null;
+
+            // Limpia prefijos GS1 y caracteres de control (incluye FNC1 representado como ASCII 29)
+            let cleanCode = String(rawCode)
+                .replace(/^\]C1/, '')
+                .replace(/^~1/, '')
+                .replace(/[\x00-\x1F\x7F]/g, '')
+                .replace(/\s+/g, '')
+                .trim();
+
+            // Busca ventanas de 24 digitos (formato Arcor esperado)
+            const runs = cleanCode.match(/\d{24,}/g) || [];
+            const candidates = [];
+            runs.forEach(run => {
+                for (let i = 0; i <= run.length - 24; i++) {
+                    candidates.push(run.substring(i, i + 24));
+                }
+            });
+
+            // Fallback: juntar solo digitos y probar ventanas de 24
+            if (candidates.length === 0) {
+                const digitsOnly = cleanCode.replace(/\D/g, '');
+                for (let i = 0; i <= digitsOnly.length - 24; i++) {
+                    candidates.push(digitsOnly.substring(i, i + 24));
+                }
+            }
+
+            if (candidates.length === 0) return null;
 
             try {
-                // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 5)
-                const yy = code.substring(0, 2);
-                const mm = code.substring(2, 4);
-                const dd = code.substring(4, 6);
-                const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
-                const lote = `${dd}${mm}${yy}`;
+                for (const code of candidates) {
+                    // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 5)
+                    const yy = code.substring(0, 2);
+                    const mm = parseInt(code.substring(2, 4), 10);
+                    const dd = parseInt(code.substring(4, 6), 10);
 
-                // 2. Hora de fabricación (HHMM -> Posiciones 6 a 9)
-                const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
+                    // 2. Hora de fabricación (HHMM -> Posiciones 6 a 9)
+                    const hh = parseInt(code.substring(6, 8), 10);
+                    const min = parseInt(code.substring(8, 10), 10);
 
-                // 3. Peso Neto (Posiciones 14 a 17) -> Ejemplo: "2404" -> 240.4
-                const rawWeight = parseFloat(code.substring(14, 18));
-                const pesoNeto = (rawWeight / 10).toFixed(1);
+                    // 3. Peso Neto (Posiciones 14 a 17) -> Ejemplo: "2416" -> 241.6
+                    const rawWeight = parseInt(code.substring(14, 18), 10);
+                    const peso = rawWeight / 10;
 
-                // 4. Cabezal / Nro de Bolsa (Posición 18 en adelante)
-                // Regla: 1 = A, 2 = B
-                const headPrefixDigit = code.substring(18, 19);
-                const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
-                const headNumber = code.substring(19);
-                const cabezal = `${letter}${headNumber}`;
+                    // 4. Cabezal / Nro de Bolsa (Posición 18 en adelante)
+                    // Regla: 1 = A, 2 = B
+                    const headPrefixDigit = code.substring(18, 19);
 
-                return { lote, cabezal, fechaFab, hora, pesoNeto };
+                    const validDate = isInRange(mm, 1, 12) && isInRange(dd, 1, 31);
+                    const validTime = isInRange(hh, 0, 23) && isInRange(min, 0, 59);
+                    const validHead = headPrefixDigit === '1' || headPrefixDigit === '2';
+                    const validWeight = isInRange(peso, 50, 400);
+
+                    if (!validDate || !validTime || !validHead || !validWeight) continue;
+
+                    const fechaFab = `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/20${yy}`;
+                    const lote = `${String(dd).padStart(2, '0')}${String(mm).padStart(2, '0')}${yy}`;
+                    const hora = `${String(hh).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+                    const pesoNeto = peso.toFixed(1);
+                    const letter = headPrefixDigit === '1' ? 'A' : 'B';
+                    const headNumber = code.substring(19);
+                    const cabezal = `${letter}${headNumber}`;
+
+                    return { lote, cabezal, fechaFab, hora, pesoNeto, raw: code };
+                }
+
+                return null;
             } catch (error) {
                 console.error("Fallo en el despiece de los bloques numéricos:", error);
                 return null;
@@ -325,18 +412,7 @@
                     cameraConfig,
                     cfg,
                     (decodedText) => {
-                        const parsed = parseArcorBarcode(decodedText);
-                        if (parsed) {
-                            vibrateDevice();
-                            document.getElementById('field-lote').value = parsed.lote;
-                            document.getElementById('field-cabezal').value = parsed.cabezal;
-                            document.getElementById('field-fecha').value = parsed.fechaFab;
-                            document.getElementById('field-hora').value = parsed.hora;
-                            document.getElementById('field-peso').value = parsed.pesoNeto;
-                            document.getElementById('field-obs').value = "";
-                        } else {
-                            document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
-                        }
+                        handleDecodedText(decodedText);
                     },
                     (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
                 ).catch(err => {
@@ -476,18 +552,7 @@
                     if (results && results.length) {
                         // Use the first detection
                         const decodedText = results[0].rawValue || results[0].rawValue;
-                        const parsed = parseArcorBarcode(decodedText);
-                        if (parsed) {
-                            vibrateDevice();
-                            document.getElementById('field-lote').value = parsed.lote;
-                            document.getElementById('field-cabezal').value = parsed.cabezal;
-                            document.getElementById('field-fecha').value = parsed.fechaFab;
-                            document.getElementById('field-hora').value = parsed.hora;
-                            document.getElementById('field-peso').value = parsed.pesoNeto;
-                            document.getElementById('field-obs').value = "";
-                        } else {
-                            document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
-                        }
+                        handleDecodedText(decodedText);
                         // short pause to avoid duplicate reads
                         await new Promise(r => setTimeout(r, 700));
                     } else {
