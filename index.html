@@ -11,6 +11,11 @@
     <style>
         body { background-color: #EAF0F6; }
         .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
+        /* Guía visual para alinear el código de barras a 10-15 cm */
+        .scan-overlay { pointer-events: none; }
+        .scan-target { border: 3px dashed rgba(255,255,255,0.9); width: 92%; height: 26%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35) inset; border-radius: 0.6rem; display:flex; align-items:center; justify-content:center; }
+        .scan-note { color: #fff; font-weight:700; font-size:0.9rem; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+        .focus-dot { position: absolute; width: 44px; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.95); transform: translate(-50%, -50%) scale(0.8); display:flex; align-items:center; justify-content:center; color:#111; font-weight:700; font-size:0.75rem; box-shadow:0 4px 10px rgba(0,0,0,0.4); pointer-events:none; opacity:0; transition:opacity .25s ease, transform .3s cubic-bezier(.2,.9,.2,1); }
     </style>
 </head>
 <body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
@@ -58,6 +63,12 @@
             </div>
             <div class="p-4 bg-black flex justify-center items-center relative aspect-video" id="scanner-wrapper">
                 <div id="reader" class="w-full scanner-container"></div>
+                <div id="scan-overlay" class="scan-overlay absolute inset-0 flex items-center justify-center">
+                    <div class="scan-target">
+                        <div class="scan-note">Mantener 10–15 cm · Alinear horizontalmente</div>
+                    </div>
+                    <div id="focus-dot" class="focus-dot">OK</div>
+                </div>
             </div>
             <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
                 <button onclick="startScanner()" id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm">
@@ -148,6 +159,7 @@
                 updateUI();
             }
             handleModeChange();
+            attachTapToFocus();
         });
 
         function handleModeChange() {
@@ -217,20 +229,20 @@
             // Ajuste del cuadro de enfoque: Al ser un código de barra de formato ancho (1D),
             // un cuadro alto confunde a la cámara. Hacemos la caja de escaneo muy ancha y delgada.
             const config = { 
-                fps: 20, // Más cuadros por segundo para evitar barrido borroso
-                // Para códigos 1D (GS1-128 / Code128) conviene una caja ancha y relativamente alta
+                fps: 30, // Más cuadros por segundo para evitar barrido borroso a corta distancia
+                // Caja ancha y baja para códigos 1D (rectángulo horizontal) optimizada para 10-15 cm
                 qrbox: (width, height) => {
-                    return { width: Math.floor(width * 0.95), height: Math.floor(height * 0.55) };
+                    return { width: Math.floor(width * 0.98), height: Math.floor(height * 0.24) };
                 },
-                aspectRatio: 1.777778, // Forzar formato 16:9 industrial
-                // Habilita explícitamente el soporte para Code 128 (GS1-128)
+                aspectRatio: 1.777778,
                 formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-                // Si el navegador dispone de la API nativa de BarcodeDetector, que la pruebe
                 experimentalFeatures: { useBarCodeDetectorIfSupported: true }
             };
 
+            const cameraConfig = { videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } };
+
             html5QrCode.start(
-                { facingMode: "environment" }, 
+                cameraConfig,
                 config,
                 (decodedText) => {
                     const parsed = parseArcorBarcode(decodedText);
@@ -253,6 +265,25 @@
                 alert("Error de cámara: " + err);
                 stopScanner();
             });
+
+            // Intentar ajustar parámetros del track (zoom / focus) cuando esté disponible
+            setTimeout(() => {
+                try {
+                    const videoEl = document.querySelector('#reader video');
+                    if (videoEl && videoEl.srcObject) {
+                        const track = videoEl.srcObject.getVideoTracks()[0];
+                        if (track && track.applyConstraints) {
+                            const constraints = {};
+                            const adv = [];
+                            // Intentar forzar enfoque continuo y algo de zoom si el dispositivo lo soporta
+                            adv.push({ focusMode: 'continuous' });
+                            adv.push({ zoom: 2 });
+                            constraints.advanced = adv;
+                            track.applyConstraints(constraints).catch(() => { /* no todos los dispositivos lo permiten */ });
+                        }
+                    }
+                } catch (e) { /* silencioso */ }
+            }, 800);
         }
 
         function stopScanner() {
@@ -269,6 +300,82 @@
 
         function vibrateDevice() {
             if (navigator.vibrate) navigator.vibrate(120);
+        }
+
+        // Mostrar un indicador visual de foco en la superposición
+        function showFocusDot(px, py, text = 'OK') {
+            const dot = document.getElementById('focus-dot');
+            if (!dot) return;
+            dot.style.left = px + 'px';
+            dot.style.top = py + 'px';
+            dot.textContent = text;
+            dot.style.opacity = '1';
+            dot.style.transform = 'translate(-50%, -50%) scale(1)';
+            setTimeout(() => {
+                dot.style.opacity = '0';
+                dot.style.transform = 'translate(-50%, -50%) scale(0.8)';
+            }, 650);
+        }
+
+        async function tryFocusAtPoint(relX, relY) {
+            try {
+                const videoEl = document.querySelector('#reader video');
+                if (!videoEl || !videoEl.srcObject) return false;
+                const track = videoEl.srcObject.getVideoTracks()[0];
+                if (!track) return false;
+
+                const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+                // Coordenadas relativas en [0..1]
+                const point = { x: relX, y: relY };
+
+                const constraints = { advanced: [] };
+
+                // Pista: muchos navegadores no soportan pointsOfInterest, pero intentamos
+                if (capabilities.pointsOfInterest) {
+                    constraints.advanced.push({ pointsOfInterest: [point] });
+                }
+
+                if (capabilities.focusMode && capabilities.focusMode.includes('single-shot')) {
+                    constraints.advanced.push({ focusMode: 'single-shot' });
+                }
+
+                // Si soporta zoom, aplicar un pequeño ajuste rápido hacia adelante y atrás
+                if (capabilities.zoom) {
+                    const zmin = capabilities.zoom.min || 1;
+                    const zmax = capabilities.zoom.max || zmin;
+                    const mid = Math.min(zmax, Math.max(zmin, (zmin + zmax) / 2));
+                    constraints.advanced.push({ zoom: mid });
+                }
+
+                // Si no hay nada en advanced, intentar forzar focusMode genérico
+                if (constraints.advanced.length === 0) {
+                    // Fallback: some devices accept focusMode without capabilities
+                    constraints.advanced.push({ focusMode: 'single-shot' });
+                }
+
+                await track.applyConstraints(constraints).then(() => true).catch(() => false);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // Adjuntar evento de toque/ratón sobre la superposición para enfocar
+        function attachTapToFocus() {
+            const overlay = document.getElementById('scan-overlay');
+            if (!overlay) return;
+            overlay.addEventListener('click', async (ev) => {
+                ev.preventDefault();
+                const rect = overlay.getBoundingClientRect();
+                const x = (ev.clientX - rect.left) / rect.width;
+                const y = (ev.clientY - rect.top) / rect.height;
+                const px = ev.clientX - rect.left;
+                const py = ev.clientY - rect.top;
+                const ok = await tryFocusAtPoint(x, y);
+                showFocusDot(px, py, ok ? 'OK' : '—');
+                if (ok) vibrateDevice();
+            }, { passive: true });
         }
 
         function commitCurrentItem() {
