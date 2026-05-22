@@ -239,7 +239,9 @@
                 experimentalFeatures: { useBarCodeDetectorIfSupported: true }
             };
 
-            const cameraConfig = { videoConstraints: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } };
+            // Html5Qrcode only accepts `{ facingMode: 'environment' }` or a cameraId object here.
+            // We request higher resolution later via applyConstraints on the track.
+            const cameraConfig = { facingMode: "environment" };
 
             html5QrCode.start(
                 cameraConfig,
