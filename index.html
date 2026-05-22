@@ -12,7 +12,7 @@
         body { background-color: #EAF0F6; }
         .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
         /* Guía visual para alinear el código de barras a 10-15 cm */
-        .scan-overlay { pointer-events: none; }
+        .scan-overlay { pointer-events: auto; }
         .scan-target { border: 3px dashed rgba(255,255,255,0.9); width: 92%; height: 26%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35) inset; border-radius: 0.6rem; display:flex; align-items:center; justify-content:center; }
         .scan-note { color: #fff; font-weight:700; font-size:0.9rem; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
         .focus-dot { position: absolute; width: 44px; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.95); transform: translate(-50%, -50%) scale(0.8); display:flex; align-items:center; justify-content:center; color:#111; font-weight:700; font-size:0.75rem; box-shadow:0 4px 10px rgba(0,0,0,0.4); pointer-events:none; opacity:0; transition:opacity .25s ease, transform .3s cubic-bezier(.2,.9,.2,1); }
@@ -69,6 +69,17 @@
                     </div>
                     <div id="focus-dot" class="focus-dot">OK</div>
                 </div>
+            </div>
+            <div class="p-3 bg-white border-t border-gray-200 grid grid-cols-4 gap-2 items-end">
+                <div class="col-span-3">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Lente / Cámara</label>
+                    <select id="camera-select" onchange="handleCameraChange()" class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">Automática (trasera)</option>
+                    </select>
+                </div>
+                <button onclick="refreshCameraList()" class="col-span-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2.5 px-2 rounded-lg text-xs transition-colors">
+                    Actualizar
+                </button>
             </div>
             <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
                 <button onclick="startScanner()" id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm">
@@ -151,6 +162,11 @@
     <script>
         let masterData = [];
         let html5QrCode = null;
+        let useBarcodeDetector = false;
+        let barcodeDetector = null;
+        let barcodeStream = null;
+        let barcodeDetectionActive = false;
+        let selectedCameraId = '';
         let currentItemCount = 0;
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -160,7 +176,63 @@
             }
             handleModeChange();
             attachTapToFocus();
+            refreshCameraList();
         });
+
+        function guessLensType(label) {
+            const txt = (label || '').toLowerCase();
+            if (txt.includes('macro')) return 'macro';
+            if (txt.includes('ultra') || txt.includes('wide') || txt.includes('gran angular')) return 'gran angular';
+            if (txt.includes('tele')) return 'tele';
+            if (txt.includes('back') || txt.includes('rear') || txt.includes('trasera')) return 'trasera';
+            if (txt.includes('front') || txt.includes('frontal')) return 'frontal';
+            return 'camara';
+        }
+
+        function handleCameraChange() {
+            const select = document.getElementById('camera-select');
+            selectedCameraId = select ? select.value : '';
+        }
+
+        async function refreshCameraList() {
+            const select = document.getElementById('camera-select');
+            if (!select) return;
+
+            const previous = selectedCameraId || select.value || '';
+            select.innerHTML = '<option value="">Automática (trasera)</option>';
+
+            try {
+                // Intentar obtener etiquetas reales de cámaras
+                let cameras = [];
+                try {
+                    cameras = await Html5Qrcode.getCameras();
+                } catch (err) {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    cameras = devices
+                        .filter(d => d.kind === 'videoinput')
+                        .map(d => ({ id: d.deviceId, label: d.label || 'Cámara sin nombre' }));
+                }
+
+                cameras.forEach((cam, idx) => {
+                    const label = cam.label || `Cámara ${idx + 1}`;
+                    const lensType = guessLensType(label);
+                    const option = document.createElement('option');
+                    option.value = cam.id;
+                    option.textContent = `${label} (${lensType})`;
+                    select.appendChild(option);
+                });
+
+                if (previous && cameras.some(c => c.id === previous)) {
+                    select.value = previous;
+                    selectedCameraId = previous;
+                } else {
+                    select.value = '';
+                    selectedCameraId = '';
+                }
+            } catch (error) {
+                console.error('No se pudo listar cámaras:', error);
+            }
+        }
 
         function handleModeChange() {
             const mode = document.getElementById('packaging-mode').value;
@@ -224,11 +296,16 @@
             statusLabel.innerText = "Escaneando...";
             statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 animate-pulse";
 
+            useBarcodeDetector = false;
+            barcodeDetector = null;
+            barcodeDetectionActive = false;
+
+            // Decide whether to use native BarcodeDetector (faster for 1D) or html5-qrcode fallback
             html5QrCode = new Html5Qrcode("reader");
-            
+
             // Ajuste del cuadro de enfoque: Al ser un código de barra de formato ancho (1D),
             // un cuadro alto confunde a la cámara. Hacemos la caja de escaneo muy ancha y delgada.
-            const config = { 
+            const config = {
                 fps: 30, // Más cuadros por segundo para evitar barrido borroso a corta distancia
                 // Caja ancha y baja para códigos 1D (rectángulo horizontal) optimizada para 10-15 cm
                 qrbox: (width, height) => {
@@ -239,34 +316,77 @@
                 experimentalFeatures: { useBarCodeDetectorIfSupported: true }
             };
 
-            // Html5Qrcode only accepts `{ facingMode: 'environment' }` or a cameraId object here.
-            // We request higher resolution later via applyConstraints on the track.
-            const cameraConfig = { facingMode: "environment" };
+            // Html5Qrcode accepts either a cameraId string or a config with facingMode.
+            const cameraConfig = selectedCameraId || { facingMode: "environment" };
 
-            html5QrCode.start(
-                cameraConfig,
-                config,
-                (decodedText) => {
-                    const parsed = parseArcorBarcode(decodedText);
-                    
-                    if (parsed) {
-                        vibrateDevice();
-                        document.getElementById('field-lote').value = parsed.lote;
-                        document.getElementById('field-cabezal').value = parsed.cabezal;
-                        document.getElementById('field-fecha').value = parsed.fechaFab;
-                        document.getElementById('field-hora').value = parsed.hora;
-                        document.getElementById('field-peso').value = parsed.pesoNeto;
-                        document.getElementById('field-obs').value = ""; // Limpia errores previos si lee bien
-                    } else {
-                        // Resguardo: Si detecta la barra pero no procesa la lógica, te deja ver el string crudo
-                        document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
+            // helper to start html5-qrcode path
+            function startHtml5QrCode(cfg) {
+                html5QrCode.start(
+                    cameraConfig,
+                    cfg,
+                    (decodedText) => {
+                        const parsed = parseArcorBarcode(decodedText);
+                        if (parsed) {
+                            vibrateDevice();
+                            document.getElementById('field-lote').value = parsed.lote;
+                            document.getElementById('field-cabezal').value = parsed.cabezal;
+                            document.getElementById('field-fecha').value = parsed.fechaFab;
+                            document.getElementById('field-hora').value = parsed.hora;
+                            document.getElementById('field-peso').value = parsed.pesoNeto;
+                            document.getElementById('field-obs').value = "";
+                        } else {
+                            document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
+                        }
+                    },
+                    (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
+                ).catch(err => {
+                    alert("Error de cámara: " + err);
+                    stopScanner();
+                });
+            }
+
+            (async () => {
+                if ('BarcodeDetector' in window) {
+                    try {
+                        const supported = await BarcodeDetector.getSupportedFormats();
+                        if (supported && supported.includes('code_128')) {
+                            barcodeDetector = new BarcodeDetector({ formats: ['code_128'] });
+                            useBarcodeDetector = true;
+                        }
+                    } catch (e) {
+                        useBarcodeDetector = false;
                     }
-                },
-                (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
-            ).catch(err => {
-                alert("Error de cámara: " + err);
-                stopScanner();
-            });
+                }
+
+                if (useBarcodeDetector) {
+                    // Start camera stream and attach to a video element inside #reader
+                    try {
+                        const videoConstraints = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' };
+                        const constraints = { video: videoConstraints };
+                        barcodeStream = await navigator.mediaDevices.getUserMedia(constraints);
+                        const readerEl = document.getElementById('reader');
+                        readerEl.innerHTML = '';
+                        const video = document.createElement('video');
+                        video.autoplay = true;
+                        video.playsInline = true;
+                        video.muted = true;
+                        video.style.width = '100%';
+                        video.style.height = '100%';
+                        readerEl.appendChild(video);
+                        video.srcObject = barcodeStream;
+                        await video.play();
+
+                        barcodeDetectionActive = true;
+                        barcodeDetectLoop(video);
+                    } catch (err) {
+                        // Fall back to html5-qrcode if getUserMedia fails
+                        useBarcodeDetector = false;
+                        startHtml5QrCode(config);
+                    }
+                } else {
+                    startHtml5QrCode(config);
+                }
+            })();
 
             // Intentar ajustar parámetros del track (zoom / focus) cuando esté disponible
             setTimeout(() => {
@@ -289,7 +409,8 @@
         }
 
         function stopScanner() {
-            if (html5QrCode) {
+            // Stop html5-qrcode if active
+            if (html5QrCode && !useBarcodeDetector) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('btn-start').classList.remove('hidden');
                     document.getElementById('btn-stop').classList.add('hidden');
@@ -298,10 +419,85 @@
                     statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
                 }).catch(err => console.error(err));
             }
+
+            // Stop BarcodeDetector / getUserMedia path
+            if (useBarcodeDetector && barcodeStream) {
+                barcodeDetectionActive = false;
+                try {
+                    barcodeStream.getTracks().forEach(t => t.stop());
+                } catch (e) { /* ignore */ }
+                barcodeStream = null;
+                // Reset reader HTML to original placeholder
+                const readerEl = document.getElementById('reader');
+                readerEl.innerHTML = '';
+                const placeholder = document.createElement('div');
+                placeholder.className = 'w-full scanner-container';
+                placeholder.style.height = '100%';
+                readerEl.appendChild(placeholder);
+
+                document.getElementById('btn-start').classList.remove('hidden');
+                document.getElementById('btn-stop').classList.add('hidden');
+                const statusLabel = document.getElementById('scanner-status');
+                statusLabel.innerText = "Apagado";
+                statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
+            }
         }
 
         function vibrateDevice() {
             if (navigator.vibrate) navigator.vibrate(120);
+        }
+
+        // Loop that feeds video frames to BarcodeDetector
+        async function barcodeDetectLoop(video) {
+            const overlay = document.getElementById('scan-overlay');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            while (barcodeDetectionActive) {
+                try {
+                    if (video.readyState < 2) {
+                        await new Promise(r => setTimeout(r, 50));
+                        continue;
+                    }
+
+                    // Scale canvas to video size (small to improve perf)
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    if (!vw || !vh) { await new Promise(r => setTimeout(r, 50)); continue; }
+                    const scale = 0.6; // downscale to speed
+                    canvas.width = Math.floor(vw * scale);
+                    canvas.height = Math.floor(vh * scale);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    const imageBitmap = await createImageBitmap(canvas);
+                    const results = await barcodeDetector.detect(imageBitmap);
+                    imageBitmap.close();
+
+                    if (results && results.length) {
+                        // Use the first detection
+                        const decodedText = results[0].rawValue || results[0].rawValue;
+                        const parsed = parseArcorBarcode(decodedText);
+                        if (parsed) {
+                            vibrateDevice();
+                            document.getElementById('field-lote').value = parsed.lote;
+                            document.getElementById('field-cabezal').value = parsed.cabezal;
+                            document.getElementById('field-fecha').value = parsed.fechaFab;
+                            document.getElementById('field-hora').value = parsed.hora;
+                            document.getElementById('field-peso').value = parsed.pesoNeto;
+                            document.getElementById('field-obs').value = "";
+                        } else {
+                            document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
+                        }
+                        // short pause to avoid duplicate reads
+                        await new Promise(r => setTimeout(r, 700));
+                    } else {
+                        await new Promise(r => setTimeout(r, 80));
+                    }
+                } catch (e) {
+                    // If detect throws, wait a bit and continue
+                    await new Promise(r => setTimeout(r, 200));
+                }
+            }
         }
 
         // Mostrar un indicador visual de foco en la superposición
