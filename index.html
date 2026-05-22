@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Producción - GS1-128 Arcor</title>
+    <title>Control de Producción - I2of5 Arcor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -11,11 +11,6 @@
     <style>
         body { background-color: #EAF0F6; }
         .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
-        /* Guía visual para alinear el código de barras a 10-15 cm */
-        .scan-overlay { pointer-events: auto; }
-        .scan-target { border: 3px dashed rgba(255,255,255,0.9); width: 92%; height: 26%; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35) inset; border-radius: 0.6rem; display:flex; align-items:center; justify-content:center; }
-        .scan-note { color: #fff; font-weight:700; font-size:0.9rem; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
-        .focus-dot { position: absolute; width: 44px; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.95); transform: translate(-50%, -50%) scale(0.8); display:flex; align-items:center; justify-content:center; color:#111; font-weight:700; font-size:0.75rem; box-shadow:0 4px 10px rgba(0,0,0,0.4); pointer-events:none; opacity:0; transition:opacity .25s ease, transform .3s cubic-bezier(.2,.9,.2,1); }
     </style>
 </head>
 <body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
@@ -24,7 +19,7 @@
         <div class="max-w-md mx-auto flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold tracking-tight">Control de Pallets</h1>
-                <p class="text-xs text-blue-200">Extractor GS1-128 / Planta San Juan</p>
+                <p class="text-xs text-blue-200">Lector Interleaved 2 of 5 / San Juan</p>
             </div>
             <div class="bg-blue-800 px-3 py-1.5 rounded-lg text-right">
                 <span class="text-xs block text-blue-300 font-semibold uppercase">Total Filas</span>
@@ -56,30 +51,13 @@
 
         <section class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
             <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                <span class="font-bold text-sm text-gray-700">Escáner de Barra Industrial</span>
+                <span class="font-bold text-sm text-gray-700">Escáner de Barra (I2of5)</span>
                 <span id="scanner-status" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
                     Apagado
                 </span>
             </div>
             <div class="p-4 bg-black flex justify-center items-center relative aspect-video" id="scanner-wrapper">
                 <div id="reader" class="w-full scanner-container"></div>
-                <div id="scan-overlay" class="scan-overlay absolute inset-0 flex items-center justify-center">
-                    <div class="scan-target">
-                        <div class="scan-note">Mantener 10–15 cm · Alinear horizontalmente</div>
-                    </div>
-                    <div id="focus-dot" class="focus-dot">OK</div>
-                </div>
-            </div>
-            <div class="p-3 bg-white border-t border-gray-200 grid grid-cols-4 gap-2 items-end">
-                <div class="col-span-3">
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Lente / Cámara</label>
-                    <select id="camera-select" onchange="handleCameraChange()" class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                        <option value="">Automática (trasera)</option>
-                    </select>
-                </div>
-                <button onclick="refreshCameraList()" class="col-span-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2.5 px-2 rounded-lg text-xs transition-colors">
-                    Actualizar
-                </button>
             </div>
             <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
                 <button onclick="startScanner()" id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm">
@@ -162,11 +140,6 @@
     <script>
         let masterData = [];
         let html5QrCode = null;
-        let selectedCameraId = '';
-        let lastDecodedKey = '';
-        let lastDecodedAt = 0;
-        let stableReadCount = 0;
-        let lastAcceptedAt = 0;
         let currentItemCount = 0;
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -175,64 +148,7 @@
                 updateUI();
             }
             handleModeChange();
-            attachTapToFocus();
-            refreshCameraList();
         });
-
-        function guessLensType(label) {
-            const txt = (label || '').toLowerCase();
-            if (txt.includes('macro')) return 'macro';
-            if (txt.includes('ultra') || txt.includes('wide') || txt.includes('gran angular')) return 'gran angular';
-            if (txt.includes('tele')) return 'tele';
-            if (txt.includes('back') || txt.includes('rear') || txt.includes('trasera')) return 'trasera';
-            if (txt.includes('front') || txt.includes('frontal')) return 'frontal';
-            return 'camara';
-        }
-
-        function handleCameraChange() {
-            const select = document.getElementById('camera-select');
-            selectedCameraId = select ? select.value : '';
-        }
-
-        async function refreshCameraList() {
-            const select = document.getElementById('camera-select');
-            if (!select) return;
-
-            const previous = selectedCameraId || select.value || '';
-            select.innerHTML = '<option value="">Automática (trasera)</option>';
-
-            try {
-                // Intentar obtener etiquetas reales de cámaras
-                let cameras = [];
-                try {
-                    cameras = await Html5Qrcode.getCameras();
-                } catch (err) {
-                    const devices = await navigator.mediaDevices.enumerateDevices();
-                    cameras = devices
-                        .filter(d => d.kind === 'videoinput')
-                        .map(d => ({ id: d.deviceId, label: d.label || 'Cámara sin nombre' }));
-                }
-
-                cameras.forEach((cam, idx) => {
-                    const label = cam.label || `Cámara ${idx + 1}`;
-                    const lensType = guessLensType(label);
-                    const option = document.createElement('option');
-                    option.value = cam.id;
-                    option.textContent = `${label} (${lensType})`;
-                    select.appendChild(option);
-                });
-
-                if (previous && cameras.some(c => c.id === previous)) {
-                    select.value = previous;
-                    selectedCameraId = previous;
-                } else {
-                    select.value = '';
-                    selectedCameraId = '';
-                }
-            } catch (error) {
-                console.error('No se pudo listar cámaras:', error);
-            }
-        }
 
         function handleModeChange() {
             const mode = document.getElementById('packaging-mode').value;
@@ -247,126 +163,40 @@
             }
         }
 
-        function isInRange(value, min, max) {
-            return Number.isFinite(value) && value >= min && value <= max;
-        }
-
-        function applyParsedData(parsed) {
-            document.getElementById('field-lote').value = parsed.lote;
-            document.getElementById('field-cabezal').value = parsed.cabezal;
-            document.getElementById('field-fecha').value = parsed.fechaFab;
-            document.getElementById('field-hora').value = parsed.hora;
-            document.getElementById('field-peso').value = parsed.pesoNeto;
-            document.getElementById('field-obs').value = '';
-        }
-
-        function handleDecodedText(decodedText) {
-            const parsed = parseArcorBarcode(decodedText);
-            const now = Date.now();
-
-            if (!parsed) {
-                const onlyDigits = (decodedText || '').replace(/\D/g, '');
-                if (onlyDigits.length >= 10) {
-                    document.getElementById('field-obs').value = `Lectura no valida: ${onlyDigits.slice(0, 36)}`;
-                }
-                return;
-            }
-
-            const key = `${parsed.lote}|${parsed.cabezal}|${parsed.pesoNeto}`;
-            if (key === lastDecodedKey && (now - lastDecodedAt) <= 1500) {
-                stableReadCount++;
-            } else {
-                stableReadCount = 1;
-            }
-            lastDecodedKey = key;
-            lastDecodedAt = now;
-
-            // Exigir 2 lecturas consecutivas para evitar parseos basura por desenfoque
-            if (stableReadCount < 2) {
-                document.getElementById('field-obs').value = 'Detectado, confirmando...';
-                return;
-            }
-
-            // Evitar repetidos inmediatos del mismo frame
-            if ((now - lastAcceptedAt) < 1000) return;
-
-            lastAcceptedAt = now;
-            stableReadCount = 0;
-            vibrateDevice();
-            applyParsedData(parsed);
-        }
-
-        // LIMPIEZA Y PARSEO ROBUSTO PARA GS1-128
+        // PARSEO DE CADENA RECTIFICADO PARA INTERLEAVED 2 OF 5
         function parseArcorBarcode(rawCode) {
-            if (!rawCode) return null;
-
-            // Limpia prefijos GS1 y caracteres de control (incluye FNC1 representado como ASCII 29)
-            let cleanCode = String(rawCode)
-                .replace(/^\]C1/, '')
-                .replace(/^~1/, '')
-                .replace(/[\x00-\x1F\x7F]/g, '')
-                .replace(/\s+/g, '')
-                .trim();
-
-            // Busca ventanas de 24 digitos (formato Arcor esperado)
-            const runs = cleanCode.match(/\d{24,}/g) || [];
-            const candidates = [];
-            runs.forEach(run => {
-                for (let i = 0; i <= run.length - 24; i++) {
-                    candidates.push(run.substring(i, i + 24));
-                }
-            });
-
-            // Fallback: juntar solo digitos y probar ventanas de 24
-            if (candidates.length === 0) {
-                const digitsOnly = cleanCode.replace(/\D/g, '');
-                for (let i = 0; i <= digitsOnly.length - 24; i++) {
-                    candidates.push(digitsOnly.substring(i, i + 24));
-                }
-            }
-
-            if (candidates.length === 0) return null;
+            // Limpieza estricta de cualquier carácter que no sea numérico
+            const code = rawCode.replace(/\D/g, '').trim();
+            
+            // Si la cámara devuelve una lectura truncada (falsa lectura típica de I2of5), la ignoramos
+            if (code.length < 23) return null;
 
             try {
-                for (const code of candidates) {
-                    // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 5)
-                    const yy = code.substring(0, 2);
-                    const mm = parseInt(code.substring(2, 4), 10);
-                    const dd = parseInt(code.substring(4, 6), 10);
+                // Despiece exacto de la cadena de 23 dígitos: 26021607428927240016310
+                // Posiciones:
+                // 0-1: Año (26) | 2-3: Mes (02) | 4-5: Día (16)
+                const yy = code.substring(0, 2);
+                const mm = code.substring(2, 4);
+                const dd = code.substring(4, 6);
+                const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
+                const lote = `${dd}${mm}${yy}`;
 
-                    // 2. Hora de fabricación (HHMM -> Posiciones 6 a 9)
-                    const hh = parseInt(code.substring(6, 8), 10);
-                    const min = parseInt(code.substring(8, 10), 10);
+                // 6-7: Hora (07) | 8-9: Minutos (42)
+                const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
 
-                    // 3. Peso Neto (Posiciones 14 a 17) -> Ejemplo: "2416" -> 241.6
-                    const rawWeight = parseInt(code.substring(14, 18), 10);
-                    const peso = rawWeight / 10;
+                // 14-17: Peso Neto (2400 o 2404 -> Depende de la tara)
+                const rawWeight = parseFloat(code.substring(14, 18));
+                const pesoNeto = (rawWeight / 10).toFixed(1);
 
-                    // 4. Cabezal / Nro de Bolsa (Posición 18 en adelante)
-                    // Regla: 1 = A, 2 = B
-                    const headPrefixDigit = code.substring(18, 19);
+                // 18: Prefijo serie cabezal (1=A, 2=B) | 19-22: Número correlativo bolsa
+                const headPrefixDigit = code.substring(18, 19);
+                const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
+                const headNumber = code.substring(19);
+                const cabezal = `${letter}${headNumber}`;
 
-                    const validDate = isInRange(mm, 1, 12) && isInRange(dd, 1, 31);
-                    const validTime = isInRange(hh, 0, 23) && isInRange(min, 0, 59);
-                    const validHead = headPrefixDigit === '1' || headPrefixDigit === '2';
-                    const validWeight = isInRange(peso, 50, 400);
-
-                    if (!validDate || !validTime || !validHead || !validWeight) continue;
-
-                    const fechaFab = `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/20${yy}`;
-                    const lote = `${String(dd).padStart(2, '0')}${String(mm).padStart(2, '0')}${yy}`;
-                    const hora = `${String(hh).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-                    const pesoNeto = peso.toFixed(1);
-                    const letter = headPrefixDigit === '1' ? 'A' : 'B';
-                    const headNumber = code.substring(19);
-                    const cabezal = `${letter}${headNumber}`;
-
-                    return { lote, cabezal, fechaFab, hora, pesoNeto, raw: code };
-                }
-
-                return null;
+                return { lote, cabezal, fechaFab, hora, pesoNeto };
             } catch (error) {
-                console.error("Fallo en el despiece de los bloques numéricos:", error);
+                console.error("Error procesando desglose de I2of5:", error);
                 return null;
             }
         }
@@ -376,58 +206,47 @@
             document.getElementById('btn-stop').classList.remove('hidden');
             
             const statusLabel = document.getElementById('scanner-status');
-            statusLabel.innerText = "Escaneando...";
-            statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 animate-pulse";
+            statusLabel.innerText = "Buscando Barra I2of5...";
+            statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 animate-pulse";
 
-            // Escaneo unicamente con html5-qrcode para maxima compatibilidad
             html5QrCode = new Html5Qrcode("reader");
-
-            // Ajuste del cuadro de enfoque: Al ser un código de barra de formato ancho (1D),
-            // un cuadro alto confunde a la cámara. Hacemos la caja de escaneo muy ancha y delgada.
-            const config = {
-                fps: 30, // Más cuadros por segundo para evitar barrido borroso a corta distancia
-                // Caja ancha y baja para códigos 1D (rectángulo horizontal) optimizada para 10-15 cm
+            
+            const config = { 
+                fps: 25, // Mayor velocidad de refresco para capturar transiciones de líneas finas
                 qrbox: (width, height) => {
-                    return { width: Math.floor(width * 0.98), height: Math.floor(height * 0.24) };
+                    return { width: Math.floor(width * 0.95), height: Math.floor(height * 0.30) }
                 },
-                aspectRatio: 1.777778,
-                formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-                experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+                aspectRatio: 1.777778
             };
 
-            // Html5Qrcode accepts either a cameraId string or a config with facingMode.
-            const cameraConfig = selectedCameraId || { facingMode: "environment" };
-
+            // INSTRUCCIÓN CRÍTICA: Forzamos la decodificación EXCLUSIVA de Interleaved 2 of 5 (ITF)
+            // Esto evita que intente adivinar formatos erróneos y activa el motor matemático adecuado.
             html5QrCode.start(
-                cameraConfig,
+                { facingMode: "environment" }, 
                 config,
                 (decodedText) => {
-                    handleDecodedText(decodedText);
-                },
-                (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
-            ).catch(err => {
-                alert("Error de cámara: " + err);
-                stopScanner();
-            });
-
-            // Intentar ajustar parámetros del track (zoom / focus) cuando esté disponible
-            setTimeout(() => {
-                try {
-                    const videoEl = document.querySelector('#reader video');
-                    if (videoEl && videoEl.srcObject) {
-                        const track = videoEl.srcObject.getVideoTracks()[0];
-                        if (track && track.applyConstraints) {
-                            const constraints = {};
-                            const adv = [];
-                            // Intentar forzar enfoque continuo y algo de zoom si el dispositivo lo soporta
-                            adv.push({ focusMode: 'continuous' });
-                            adv.push({ zoom: 2 });
-                            constraints.advanced = adv;
-                            track.applyConstraints(constraints).catch(() => { /* no todos los dispositivos lo permiten */ });
+                    const parsed = parseArcorBarcode(decodedText);
+                    
+                    if (parsed) {
+                        vibrateDevice();
+                        document.getElementById('field-lote').value = parsed.lote;
+                        document.getElementById('field-cabezal').value = parsed.cabezal;
+                        document.getElementById('field-fecha').value = parsed.fechaFab;
+                        document.getElementById('field-hora').value = parsed.hora;
+                        document.getElementById('field-peso').value = parsed.pesoNeto;
+                        document.getElementById('field-obs').value = ""; 
+                    } else {
+                        // En caso de que se lea un pedazo de barra incompleto, se muestra en observaciones
+                        if(decodedText.replace(/\D/g, '').length > 5) {
+                            document.getElementById('field-obs').value = "Lectura parcial I2of5: " + decodedText;
                         }
                     }
-                } catch (e) { /* silencioso */ }
-            }, 800);
+                },
+                (errorMessage) => { /* Ruido de escaneo ignorado */ }
+            ).catch(err => {
+                alert("Error de hardware cámara: " + err);
+                stopScanner();
+            });
         }
 
         function stopScanner() {
@@ -444,82 +263,6 @@
 
         function vibrateDevice() {
             if (navigator.vibrate) navigator.vibrate(120);
-        }
-
-        // Mostrar un indicador visual de foco en la superposición
-        function showFocusDot(px, py, text = 'OK') {
-            const dot = document.getElementById('focus-dot');
-            if (!dot) return;
-            dot.style.left = px + 'px';
-            dot.style.top = py + 'px';
-            dot.textContent = text;
-            dot.style.opacity = '1';
-            dot.style.transform = 'translate(-50%, -50%) scale(1)';
-            setTimeout(() => {
-                dot.style.opacity = '0';
-                dot.style.transform = 'translate(-50%, -50%) scale(0.8)';
-            }, 650);
-        }
-
-        async function tryFocusAtPoint(relX, relY) {
-            try {
-                const videoEl = document.querySelector('#reader video');
-                if (!videoEl || !videoEl.srcObject) return false;
-                const track = videoEl.srcObject.getVideoTracks()[0];
-                if (!track) return false;
-
-                const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-
-                // Coordenadas relativas en [0..1]
-                const point = { x: relX, y: relY };
-
-                const constraints = { advanced: [] };
-
-                // Pista: muchos navegadores no soportan pointsOfInterest, pero intentamos
-                if (capabilities.pointsOfInterest) {
-                    constraints.advanced.push({ pointsOfInterest: [point] });
-                }
-
-                if (capabilities.focusMode && capabilities.focusMode.includes('single-shot')) {
-                    constraints.advanced.push({ focusMode: 'single-shot' });
-                }
-
-                // Si soporta zoom, aplicar un pequeño ajuste rápido hacia adelante y atrás
-                if (capabilities.zoom) {
-                    const zmin = capabilities.zoom.min || 1;
-                    const zmax = capabilities.zoom.max || zmin;
-                    const mid = Math.min(zmax, Math.max(zmin, (zmin + zmax) / 2));
-                    constraints.advanced.push({ zoom: mid });
-                }
-
-                // Si no hay nada en advanced, intentar forzar focusMode genérico
-                if (constraints.advanced.length === 0) {
-                    // Fallback: some devices accept focusMode without capabilities
-                    constraints.advanced.push({ focusMode: 'single-shot' });
-                }
-
-                await track.applyConstraints(constraints).then(() => true).catch(() => false);
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }
-
-        // Adjuntar evento de toque/ratón sobre la superposición para enfocar
-        function attachTapToFocus() {
-            const overlay = document.getElementById('scan-overlay');
-            if (!overlay) return;
-            overlay.addEventListener('click', async (ev) => {
-                ev.preventDefault();
-                const rect = overlay.getBoundingClientRect();
-                const x = (ev.clientX - rect.left) / rect.width;
-                const y = (ev.clientY - rect.top) / rect.height;
-                const px = ev.clientX - rect.left;
-                const py = ev.clientY - rect.top;
-                const ok = await tryFocusAtPoint(x, y);
-                showFocusDot(px, py, ok ? 'OK' : '—');
-                if (ok) vibrateDevice();
-            }, { passive: true });
         }
 
         function commitCurrentItem() {
@@ -549,7 +292,6 @@
                 document.getElementById('pallet-number').value = parseInt(palletNum) + 1;
             }
 
-            // Limpieza express
             document.getElementById('field-lote').value = "";
             document.getElementById('field-cabezal').value = "";
             document.getElementById('field-fecha').value = "";
@@ -568,7 +310,7 @@
         }
 
         function clearAllData() {
-            if (confirm("¿Borrar todo el historial local del teléfono?")) {
+            if (confirm("¿Limpiar por completo los pallets cargados?")) {
                 masterData = [];
                 localStorage.removeItem('arcor_production_data');
                 document.getElementById('pallet-number').value = 1;
