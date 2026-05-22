@@ -201,72 +201,90 @@
         }
 
         // MOTOR DE DESGLOSE DE CÓDIGO (Interleaved 2 of 5 - 23 dígitos)
-        function processBarcodeString(rawData) {
-            // Nos quedamos puramente con los números
-            const code = rawData.replace(/\D/g, '').trim();
+ function processBarcodeString(rawData) {
+    // Limpieza de caracteres no numéricos
+    const code = rawData.replace(/\D/g, '').trim();
+    
+    // Filtro mínimo de seguridad
+    if (code.length < 20) {
+        document.getElementById('field-obs').value = "Código demasiado corto (" + code.length + " dígs)";
+        return false;
+    }
 
-            // Validamos la nueva longitud exacta de la etiqueta de planta (26 dígitos)
-            if (code.length < 26) {
-                document.getElementById('field-obs').value = "Código corto (" + code.length + "/26 dígs)";
-                return false;
-            }
+    try {
+        // 1. EXTRAER LO QUE SIEMPRE ES FIJO (Los primeros 11 dígitos)
+        const yy = code.substring(1, 3);   
+        const mm = code.substring(3, 5);   
+        const dd = code.substring(5, 7);   
+        const hr = code.substring(7, 9);   
+        const min = code.substring(9, 11); 
 
-            try {
-                // Estructura exacta basada en tu desglose:
-                // 0 26 03 21 16 14 9402 241 02 16324 8
+        const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
+        const lote = `${dd}${mm}${yy}`;
+        const hora = `${hr}:${min}`;
 
-                // Año, Mes, Día
-                const yy = code.substring(1, 3);   // "26"
-                const mm = code.substring(3, 5);   // "03"
-                const dd = code.substring(5, 7);   // "21"
+        // 2. EL RESTO DEL CÓDIGO (Desde la posición 11 en adelante)
+        // Ejemplo etiqueta 2: "9402 241 02 16324 8"
+        // Ejemplo etiqueta 1: "8927 2400 1 6310"
+        const elResto = code.substring(11);
 
-                const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
-                const lote = `${dd}${mm}${yy}`; // Formato DDMMYY para el lote
+        let pesoNeto = "0.0";
+        let cabezal = "-";
 
-                // Hora y Minutos
-                const hr = code.substring(7, 9);   // "16"
-                const min = code.substring(9, 11); // "14"
-                const hora = `${hr}:${min}`;
+        // 3. DETECTAR EL TIPO DE CABEZAL Y EXTRAER VARIABLES DILATABLES
+        // Buscamos los patrones de Cabezal B ("02") o Cabezal A ("01" o "1" después del peso)
+        if (elResto.includes("02")) {
+            // Caso Cabezal B (Formato nuevo de 26 dígitos o similar)
+            // Partimos el bloque donde está el "02"
+            const partes = elResto.split("02");
+            const bloquePeso = partes[0].substring(4); // Sacamos los 4 del cod_producto (9402) -> queda "241"
+            
+            // Si el peso es "241", le agregamos la décima que falta o si vino con 4 dígitos (ej: 2416) la calcula
+            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
+            
+            // El número de cabezal es lo que sigue después del "02" (quitando el dígito verificador final)
+            const restoCabezal = partes[1]; 
+            const nroCabezal = restoCabezal.substring(0, restoCabezal.length - 1); // Quita el último dígito random
+            cabezal = `B${parseInt(nroCabezal)}`;
 
-                // Peso Neto (Toma las 3 posiciones del peso y recupera el decimal de la etiqueta)
-                // Ejemplo: "241" de la tira + el decimal que se deduce de la balanza
-                const pesoEntero = code.substring(15, 18); // "241"
+        } else if (elResto.includes("01")) {
+            // Caso Cabezal A (Formato con "01")
+            const partes = elResto.split("01");
+            const bloquePeso = partes[0].substring(4);
+            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
+            
+            const restoCabezal = partes[1];
+            const nroCabezal = restoCabezal.substring(0, restoCabezal.length - 1);
+            cabezal = `A${parseInt(nroCabezal)}`;
 
-                // Para no perder el decimal real si el código viene entero (ej: 2416), 
-                // asumimos que el último dígito del bloque de peso o el formato general maneja un decimal:
-                // Viendo que en la primera foto "2400" era 240.0 y acá "241" representa 241, 
-                // convertimos el entero y le agregamos la décima correspondiente de forma dinámica.
-                // Si el peso en tu desglose son 3 dígitos ("241"), le dejamos un ".0" o evaluamos si el código trae 4 dígitos de peso.
-                // Basado en tu mapeo exacto: 15-17 son 3 dígitos ("241"). Le asignamos formato float.
-                const pesoNeto = parseFloat(pesoEntero).toFixed(1);
+        } else {
+            // CASO HISTÓRICO/ALTERNO (Ejemplo etiqueta 1: usa un solo dígito "1" para A o "2" para B)
+            // Como el código de producto mide 4, los siguientes 4 dígitos suelen ser el peso (ej: 2400 -> 240.0)
+            const bloquePeso = elResto.substring(4, 8); // Posición 4 a 8 del resto
+            pesoNeto = (parseFloat(bloquePeso) / 10).toFixed(1);
 
-                // Cabezal Letra (01 = A, 02 = B)
-                const tipoCabezal = code.substring(18, 20); // "02"
-                let letra = "X";
-                if (tipoCabezal === "01" || tipoCabezal === "1") {
-                    letra = "A";
-                } else if (tipoCabezal === "02" || tipoCabezal === "2") {
-                    letra = "B";
-                }
-
-                // Número correlativo del cabezal
-                const nroBolsa = code.substring(20, 25); // "16324"
-                const cabezal = `${letra}${nroBolsa}`;   // Resultado: "B16324"
-
-                // Inyectar con precisión matemática en los inputs de la pantalla
-                document.getElementById('field-lote').value = lote;
-                document.getElementById('field-cabezal').value = cabezal;
-                document.getElementById('field-fecha').value = fechaFab;
-                document.getElementById('field-hora').value = hora;
-                document.getElementById('field-peso').value = pesoNeto;
-                document.getElementById('field-obs').value = "";
-                return true;
-
-            } catch (e) {
-                document.getElementById('field-obs').value = "Error al segmentar los 26 dígitos.";
-                return false;
-            }
+            const identificadorLetra = elResto.substring(8, 9); // El dígito "1" o "2"
+            const letra = identificadorLetra === "1" ? "A" : (identificadorLetra === "2" ? "B" : "X");
+            
+            // El resto de la cadena es el número de cabezal completo
+            const nroCabezal = elResto.substring(9);
+            cabezal = `${letra}${parseInt(nroCabezal)}`; // parseInt limpia ceros basura si los hubiera
         }
+
+        // 4. INYECTAR EN LA INTERFAZ
+        document.getElementById('field-lote').value = lote;
+        document.getElementById('field-cabezal').value = cabezal;
+        document.getElementById('field-fecha').value = fechaFab;
+        document.getElementById('field-hora').value = hora;
+        document.getElementById('field-peso').value = pesoNeto;
+        document.getElementById('field-obs').value = "";
+        return true;
+
+    } catch (e) {
+        document.getElementById('field-obs').value = "Error en desglose dinámico.";
+        return false;
+    }
+}
         // CONFIRMACIÓN, INCREMENTO DE PALLET Y TRASLADO A TABLA
         function commitCurrentItem() {
             const palletNum = document.getElementById('pallet-number').value;
