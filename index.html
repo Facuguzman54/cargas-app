@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Producción - I2of5 Arcor</title>
+    <title>Control de Pallets - Híbrido (Zebra / Cámara)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -13,13 +13,13 @@
         .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
     </style>
 </head>
-<body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
+<body class="font-sans text-gray-800 antialiased min-h-screen pb-12" onclick="handleGlobalClick(event)">
 
     <header class="bg-blue-900 text-white shadow-md p-4 sticky top-0 z-50">
         <div class="max-w-md mx-auto flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold tracking-tight">Control de Pallets</h1>
-                <p class="text-xs text-blue-200">Lector Interleaved 2 of 5 / San Juan</p>
+                <p class="text-xs text-blue-200">Sistema Híbrido / San Juan</p>
             </div>
             <div class="bg-blue-800 px-3 py-1.5 rounded-lg text-right">
                 <span class="text-xs block text-blue-300 font-semibold uppercase">Total Filas</span>
@@ -28,11 +28,19 @@
         </div>
     </header>
 
+    <input type="text" id="zebra-buffer" autocomplete="off" class="absolute opacity-0 top-0 left-0 h-1 w-1 pointer-events-none">
+
     <main class="max-w-md mx-auto p-4 space-y-4">
 
         <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-            <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Configuración de Flujo</h2>
-            <div class="grid grid-cols-2 gap-3 mb-3">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Configuración de Flujo</h2>
+                <span id="system-status" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <span class="h-2 w-2 rounded-full bg-green-500 mr-1.5 animate-ping"></span>
+                    Zebra Listo
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Nro. Pallet Actual</label>
                     <input type="number" id="pallet-number" value="1" min="1" 
@@ -50,28 +58,31 @@
         </section>
 
         <section class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                <span class="font-bold text-sm text-gray-700">Escáner de Barra (I2of5)</span>
-                <span id="scanner-status" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
-                    Apagado
-                </span>
-            </div>
-            <div class="p-4 bg-black flex justify-center items-center relative aspect-video" id="scanner-wrapper">
-                <div id="reader" class="w-full scanner-container"></div>
-            </div>
-            <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
-                <button onclick="startScanner()" id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm">
-                    Encender Cámara
+            <div class="p-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <span class="font-bold text-xs text-gray-600 uppercase tracking-wider">Cámara Integrada (Auxiliar)</span>
+                <button onclick="toggleCameraPanel()" id="btn-toggle-cam" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-3 py-1 rounded text-xs transition-colors">
+                    Desplegar Visor
                 </button>
-                <button onclick="stopScanner()" id="btn-stop" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm hidden">
-                    Detener
-                </button>
+            </div>
+            
+            <div id="camera-panel" class="hidden border-t border-gray-200">
+                <div class="p-4 bg-black flex justify-center items-center relative aspect-video">
+                    <div id="reader" class="w-full scanner-container"></div>
+                </div>
+                <div class="p-3 bg-gray-100 flex gap-2">
+                    <button onclick="startCameraScanner()" id="btn-start-cam" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-xs shadow">
+                        Encender Lente
+                    </button>
+                    <button onclick="stopCameraScanner()" id="btn-stop-cam" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg text-xs shadow hidden">
+                        Apagar Lente
+                    </button>
+                </div>
             </div>
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
             <div class="flex justify-between items-center mb-3">
-                <h3 class="text-sm font-bold text-gray-700">Datos del Ítem Actual</h3>
+                <h3 class="text-sm font-bold text-gray-700">Fila en Proceso</h3>
                 <span id="item-slot-indicator" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Tambor 1 de 4</span>
             </div>
             <div class="grid grid-cols-2 gap-2.5 text-xs">
@@ -102,8 +113,9 @@
                     </div>
                 </div>
             </div>
+            
             <button onclick="commitCurrentItem()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow transition-colors">
-                Confirmar e Ingresar Registro
+                Confirmar / Forzar Ingreso
             </button>
         </section>
 
@@ -125,7 +137,7 @@
                     </thead>
                     <tbody id="table-body" class="divide-y divide-gray-200">
                         <tr>
-                            <td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados aún.</td>
+                            <td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados. Gatillá el Zebra o encendé la cámara.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -141,14 +153,58 @@
         let masterData = [];
         let html5QrCode = null;
         let currentItemCount = 0;
+        let zebraBuffer = null;
+        let isCameraActive = false;
 
         window.addEventListener('DOMContentLoaded', () => {
+            zebraBuffer = document.getElementById('zebra-buffer');
+            
             if(localStorage.getItem('arcor_production_data')) {
                 masterData = JSON.parse(localStorage.getItem('arcor_production_data'));
                 updateUI();
             }
+            
             handleModeChange();
+            focusZebraInput();
+
+            // Escuchar el disparo del Zebra (Emulación teclado + Enter)
+            zebraBuffer.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    processIncomingBarcode(this.value, "Zebra");
+                    this.value = ''; // Vaciar buffer para la siguiente lectura
+                }
+            });
+
+            // Evitar pérdida de foco al editar inputs manuales
+            document.querySelectorAll('input, select').forEach(elem => {
+                if(elem.id !== 'zebra-buffer') {
+                    elem.addEventListener('blur', () => {
+                        // Un leve retraso para que tome el click del botón si corresponde
+                        setTimeout(focusZebraInput, 300);
+                    });
+                }
+            });
         });
+
+        // Asegurar foco del Zebra si la cámara no se está usando
+        function focusZebraInput() {
+            if (zebraBuffer && !isCameraActive) {
+                zebraBuffer.focus();
+                const status = document.getElementById('system-status');
+                status.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800";
+                status.innerHTML = `<span class="h-2 w-2 rounded-full bg-green-500 mr-1.5 animate-ping"></span>Zebra Escuchando`;
+            }
+        }
+
+        // Evita interferencias si el operario interactúa con los inputs modificables
+        function handleGlobalClick(event) {
+            const targetTag = event.target.tagName.toLowerCase();
+            const targetId = event.target.id;
+            
+            if (targetTag !== 'input' && targetTag !== 'select' && targetTag !== 'button' && targetId !== 'reader') {
+                focusZebraInput();
+            }
+        }
 
         function handleModeChange() {
             const mode = document.getElementById('packaging-mode').value;
@@ -161,118 +217,134 @@
                 indicator.innerText = `Tambor ${currentItemCount + 1} de 4`;
                 indicator.className = "text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded";
             }
+            focusZebraInput();
         }
 
-        // PARSEO DE CADENA RECTIFICADO PARA INTERLEAVED 2 OF 5
-        function parseArcorBarcode(rawCode) {
-            // Limpieza estricta de cualquier carácter que no sea numérico
-            const code = rawCode.replace(/\D/g, '').trim();
+        // DESPLEGABLE DE CÁMARA
+        function toggleCameraPanel() {
+            const panel = document.getElementById('camera-panel');
+            const btn = document.getElementById('btn-toggle-cam');
+            if(panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                btn.innerText = "Colapsar Visor";
+            } else {
+                stopCameraScanner();
+                panel.classList.add('hidden');
+                btn.innerText = "Desplegar Visor";
+            }
+        }
+
+        // CONTROL HARDWARE CÁMARA (Optimizado Interleaved 2 of 5)
+        function startCameraScanner() {
+            isCameraActive = true;
+            document.getElementById('btn-start-cam').classList.add('hidden');
+            document.getElementById('btn-stop-cam').classList.remove('hidden');
             
-            // Si la cámara devuelve una lectura truncada (falsa lectura típica de I2of5), la ignoramos
-            if (code.length < 23) return null;
+            const status = document.getElementById('system-status');
+            status.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800";
+            status.innerHTML = `<span class="h-2 w-2 rounded-full bg-amber-500 mr-1.5 animate-pulse"></span>Cámara Activa`;
+
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = { 
+                fps: 22,
+                qrbox: (width, height) => {
+                    return { width: Math.floor(width * 0.95), height: Math.floor(height * 0.35) }
+                },
+                aspectRatio: 1.777778
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => {
+                    // Procesar la barra detectada por lente
+                    const success = processIncomingBarcode(decodedText, "Camara");
+                    if(success) vibrateDevice();
+                },
+                (err) => { /* Silenciar trazas dinámicas de barrido */ }
+            ).catch(err => {
+                alert("Error abriendo cámara: " + err);
+                stopCameraScanner();
+            });
+        }
+
+        function stopCameraScanner() {
+            isCameraActive = false;
+            document.getElementById('btn-start-cam').classList.remove('hidden');
+            document.getElementById('btn-stop-cam').classList.add('hidden');
+            
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode = null;
+                    focusZebraInput();
+                }).catch(err => console.error(err));
+            } else {
+                focusZebraInput();
+            }
+        }
+
+        // NÚCLEO DE PARSEO Y EXTRACCIÓN COMÚN (Para ambos canales de entrada)
+        function processIncomingBarcode(rawData, source) {
+            // Elimina caracteres no numéricos (Limpieza crítica para Interleaved 2 of 5)
+            const code = rawData.replace(/\D/g, '').trim();
+            
+            // Filtro para frenar lecturas parciales accidentales
+            if (code.length < 23) {
+                if (source === "Zebra") console.warn("Lector arrojó string incompleto:", code);
+                return false;
+            }
 
             try {
-                // Despiece exacto de la cadena de 23 dígitos: 26021607428927240016310
-                // Posiciones:
-                // 0-1: Año (26) | 2-3: Mes (02) | 4-5: Día (16)
+                // Desglose de bloques fijos (Ej: 26021607428927240016310)
                 const yy = code.substring(0, 2);
                 const mm = code.substring(2, 4);
                 const dd = code.substring(4, 6);
+                
                 const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
                 const lote = `${dd}${mm}${yy}`;
-
-                // 6-7: Hora (07) | 8-9: Minutos (42)
                 const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
 
-                // 14-17: Peso Neto (2400 o 2404 -> Depende de la tara)
                 const rawWeight = parseFloat(code.substring(14, 18));
                 const pesoNeto = (rawWeight / 10).toFixed(1);
 
-                // 18: Prefijo serie cabezal (1=A, 2=B) | 19-22: Número correlativo bolsa
                 const headPrefixDigit = code.substring(18, 19);
                 const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
                 const headNumber = code.substring(19);
                 const cabezal = `${letter}${headNumber}`;
 
-                return { lote, cabezal, fechaFab, hora, pesoNeto };
-            } catch (error) {
-                console.error("Error procesando desglose de I2of5:", error);
-                return null;
+                // Insertar valores directamente en la interfaz
+                document.getElementById('field-lote').value = lote;
+                document.getElementById('field-cabezal').value = cabezal;
+                document.getElementById('field-fecha').value = fechaFab;
+                document.getElementById('field-hora').value = hora;
+                document.getElementById('field-peso').value = pesoNeto;
+                document.getElementById('field-obs').value = "";
+
+                // ALGORITMO VELOZ: Si viene del Zebra, ejecuta confirmación inmediata sin requerir tap.
+                // Si viene de la cámara, los deja en pantalla para que el operador verifique y presione "Confirmar".
+                if (source === "Zebra") {
+                    commitCurrentItem();
+                }
+                return true;
+
+            } catch (e) {
+                document.getElementById('field-obs').value = "Error parsing: " + code;
+                return false;
             }
-        }
-
-        function startScanner() {
-            document.getElementById('btn-start').classList.add('hidden');
-            document.getElementById('btn-stop').classList.remove('hidden');
-            
-            const statusLabel = document.getElementById('scanner-status');
-            statusLabel.innerText = "Buscando Barra I2of5...";
-            statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 animate-pulse";
-
-            html5QrCode = new Html5Qrcode("reader");
-            
-            const config = { 
-                fps: 25, // Mayor velocidad de refresco para capturar transiciones de líneas finas
-                qrbox: (width, height) => {
-                    return { width: Math.floor(width * 0.95), height: Math.floor(height * 0.30) }
-                },
-                aspectRatio: 1.777778
-            };
-
-            // INSTRUCCIÓN CRÍTICA: Forzamos la decodificación EXCLUSIVA de Interleaved 2 of 5 (ITF)
-            // Esto evita que intente adivinar formatos erróneos y activa el motor matemático adecuado.
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                config,
-                (decodedText) => {
-                    const parsed = parseArcorBarcode(decodedText);
-                    
-                    if (parsed) {
-                        vibrateDevice();
-                        document.getElementById('field-lote').value = parsed.lote;
-                        document.getElementById('field-cabezal').value = parsed.cabezal;
-                        document.getElementById('field-fecha').value = parsed.fechaFab;
-                        document.getElementById('field-hora').value = parsed.hora;
-                        document.getElementById('field-peso').value = parsed.pesoNeto;
-                        document.getElementById('field-obs').value = ""; 
-                    } else {
-                        // En caso de que se lea un pedazo de barra incompleto, se muestra en observaciones
-                        if(decodedText.replace(/\D/g, '').length > 5) {
-                            document.getElementById('field-obs').value = "Lectura parcial I2of5: " + decodedText;
-                        }
-                    }
-                },
-                (errorMessage) => { /* Ruido de escaneo ignorado */ }
-            ).catch(err => {
-                alert("Error de hardware cámara: " + err);
-                stopScanner();
-            });
-        }
-
-        function stopScanner() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('btn-start').classList.remove('hidden');
-                    document.getElementById('btn-stop').classList.add('hidden');
-                    const statusLabel = document.getElementById('scanner-status');
-                    statusLabel.innerText = "Apagado";
-                    statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
-                }).catch(err => console.error(err));
-            }
-        }
-
-        function vibrateDevice() {
-            if (navigator.vibrate) navigator.vibrate(120);
         }
 
         function commitCurrentItem() {
             const palletNum = document.getElementById('pallet-number').value;
             const mode = document.getElementById('packaging-mode').value;
+            const cabezalVal = document.getElementById('field-cabezal').value;
+
+            if(!cabezalVal) return; // Evitar registros vacíos
 
             const newItem = {
                 pallet: palletNum,
                 lote: document.getElementById('field-lote').value || "-",
-                cabezal: document.getElementById('field-cabezal').value || "-",
+                cabezal: cabezalVal,
                 fechaFab: document.getElementById('field-fecha').value || "-",
                 hora: document.getElementById('field-hora').value || "-",
                 pesoNeto: document.getElementById('field-peso').value || "0",
@@ -282,6 +354,7 @@
             masterData.push(newItem);
             localStorage.setItem('arcor_production_data', JSON.stringify(masterData));
 
+            // Gestión secuencial de pallets
             if (mode === 'tambor') {
                 currentItemCount++;
                 if (currentItemCount >= 4) {
@@ -292,6 +365,7 @@
                 document.getElementById('pallet-number').value = parseInt(palletNum) + 1;
             }
 
+            // Reset campos intermedios
             document.getElementById('field-lote').value = "";
             document.getElementById('field-cabezal').value = "";
             document.getElementById('field-fecha').value = "";
@@ -310,7 +384,7 @@
         }
 
         function clearAllData() {
-            if (confirm("¿Limpiar por completo los pallets cargados?")) {
+            if (confirm("¿Seguro de que querés borrar todas las filas?")) {
                 masterData = [];
                 localStorage.removeItem('arcor_production_data');
                 document.getElementById('pallet-number').value = 1;
@@ -320,12 +394,16 @@
             }
         }
 
+        function vibrateDevice() {
+            if (navigator.vibrate) navigator.vibrate(120);
+        }
+
         function updateUI() {
             document.getElementById('global-counter').innerText = masterData.length;
             const tbody = document.getElementById('table-body');
             
             if (masterData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados aún.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados.</td></tr>`;
                 return;
             }
 
@@ -348,7 +426,7 @@
 
         function exportToExcel() {
             if (masterData.length === 0) {
-                alert("No hay datos cargados.");
+                alert("No hay registros cargados.");
                 return;
             }
 
