@@ -3,19 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Producción - Tambores y Tótems</title>
+    <title>Control de Producción - GS1-128 Arcor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <style>
-        body {
-            background-color: #EAF0F6;
-        }
-        .scanner-container video {
-            border-radius: 0.5rem;
-            object-fit: cover;
-        }
+        body { background-color: #EAF0F6; }
+        .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
     </style>
 </head>
 <body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
@@ -24,7 +19,7 @@
         <div class="max-w-md mx-auto flex justify-between items-center">
             <div>
                 <h1 class="text-xl font-bold tracking-tight">Control de Pallets</h1>
-                <p class="text-xs text-blue-200">Planta San Juan</p>
+                <p class="text-xs text-blue-200">Extractor GS1-128 / Planta San Juan</p>
             </div>
             <div class="bg-blue-800 px-3 py-1.5 rounded-lg text-right">
                 <span class="text-xs block text-blue-300 font-semibold uppercase">Total Filas</span>
@@ -56,7 +51,7 @@
 
         <section class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
             <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                <span class="font-bold text-sm text-gray-700">Escáner de Etiquetas</span>
+                <span class="font-bold text-sm text-gray-700">Escáner de Barra Industrial</span>
                 <span id="scanner-status" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
                     Apagado
                 </span>
@@ -137,7 +132,6 @@
             </div>
 
             <button onclick="exportToExcel()" class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 shadow transition-all">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 Descargar Reporte Excel (.xlsx)
             </button>
         </section>
@@ -146,9 +140,8 @@
     <script>
         let masterData = [];
         let html5QrCode = null;
-        let currentItemCount = 0; // Controla cuántos tambores van en el pallet activo
+        let currentItemCount = 0;
 
-        // Inicializar datos al cargar la app
         window.addEventListener('DOMContentLoaded', () => {
             if(localStorage.getItem('arcor_production_data')) {
                 masterData = JSON.parse(localStorage.getItem('arcor_production_data'));
@@ -170,32 +163,35 @@
             }
         }
 
-        // Lógica de parsing del código de barras industrial de Arcor
-        // Cadena tipo detectada: 26021607428927240016310
+        // LIMPIEZA Y PARSEO ROBUSTO PARA GS1-128
         function parseArcorBarcode(rawCode) {
-            const code = rawCode.trim();
-            if (code.length < 23) return null; // Resguardo por variaciones menores
+            // Elimina prefijos comunes de simbología que inyectan algunos decodificadores (ej: ]C1, ~1, o espacios nativos)
+            let cleanCode = rawCode.replace(/^\]C1/, '').replace(/^~1/, '').replace(/\s+/g, '').trim();
+            
+            // Busca la cadena numérica continua de Arcor (debe tener al menos 23 dígitos)
+            // Esto descarta basura al inicio o final del string capturado por la cámara
+            const match = cleanCode.match(/\d{23,}/);
+            if (!match) return null;
+            
+            const code = match[0];
 
             try {
-                // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 6)
+                // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 5)
                 const yy = code.substring(0, 2);
                 const mm = code.substring(2, 4);
                 const dd = code.substring(4, 6);
                 const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
-                
-                // Formato de Lote estándar según planillas de control (DDMMYY)
                 const lote = `${dd}${mm}${yy}`;
 
-                // 2. Hora de fabricación (HHMM -> Posiciones 6 a 10)
+                // 2. Hora de fabricación (HHMM -> Posiciones 6 a 9)
                 const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
 
-                // 3. Peso Neto (Posiciones 14 a 18)
-                // Convierte "2404" a 240.4. Si el código trae "2400", evalúa su división.
+                // 3. Peso Neto (Posiciones 14 a 17) -> Ejemplo: "2404" -> 240.4
                 const rawWeight = parseFloat(code.substring(14, 18));
                 const pesoNeto = (rawWeight / 10).toFixed(1);
 
-                // 4. Cabezal / Número de bolsa (Posiciones 18 a fin)
-                // Regla industrial identificada: El primer dígito determina la serie (1 = A, 2 = B)
+                // 4. Cabezal / Nro de Bolsa (Posición 18 en adelante)
+                // Regla: 1 = A, 2 = B
                 const headPrefixDigit = code.substring(18, 19);
                 const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
                 const headNumber = code.substring(19);
@@ -203,12 +199,11 @@
 
                 return { lote, cabezal, fechaFab, hora, pesoNeto };
             } catch (error) {
-                console.error("Error al procesar la cadena del código:", error);
+                console.error("Fallo en el despiece de los bloques numéricos:", error);
                 return null;
             }
         }
 
-        // Control del hardware de la cámara
         function startScanner() {
             document.getElementById('btn-start').classList.add('hidden');
             document.getElementById('btn-stop').classList.remove('hidden');
@@ -219,38 +214,38 @@
 
             html5QrCode = new Html5Qrcode("reader");
             
-            // Configuración optimizada para lectura de códigos lineales de barras de alta densidad
+            // Ajuste del cuadro de enfoque: Al ser un código de barra de formato ancho (1D),
+            // un cuadro alto confunde a la cámara. Hacemos la caja de escaneo muy ancha y delgada.
             const config = { 
-                fps: 15, 
+                fps: 20, // Más cuadros por segundo para evitar barrido borroso
                 qrbox: (width, height) => {
-                    return { width: Math.floor(width * 0.85), height: Math.floor(height * 0.4) }
-                }
+                    return { width: Math.floor(width * 0.90), height: Math.floor(height * 0.35) }
+                },
+                aspectRatio: 1.777778 // Forzar formato 16:9 industrial
             };
 
             html5QrCode.start(
                 { facingMode: "environment" }, 
                 config,
                 (decodedText) => {
-                    // Éxito de lectura
-                    vibrateDevice();
                     const parsed = parseArcorBarcode(decodedText);
                     
                     if (parsed) {
+                        vibrateDevice();
                         document.getElementById('field-lote').value = parsed.lote;
                         document.getElementById('field-cabezal').value = parsed.cabezal;
                         document.getElementById('field-fecha').value = parsed.fechaFab;
                         document.getElementById('field-hora').value = parsed.hora;
                         document.getElementById('field-peso').value = parsed.pesoNeto;
+                        document.getElementById('field-obs').value = ""; // Limpia errores previos si lee bien
                     } else {
-                        // Si falla la estructura predefinida, inyecta la cadena completa en observaciones para no perder datos
-                        document.getElementById('field-obs').value = "Error parseo - Cód: " + decodedText;
+                        // Resguardo: Si detecta la barra pero no procesa la lógica, te deja ver el string crudo
+                        document.getElementById('field-obs').value = "GS1 sin formato Arcor: " + decodedText;
                     }
                 },
-                (errorMessage) => {
-                    // Log silencioso para evitar saturación de consola durante escaneo dinámico
-                }
+                (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
             ).catch(err => {
-                alert("Error al iniciar cámara: " + err);
+                alert("Error de cámara: " + err);
                 stopScanner();
             });
         }
@@ -268,12 +263,9 @@
         }
 
         function vibrateDevice() {
-            if (navigator.vibrate) {
-                navigator.vibrate(150);
-            }
+            if (navigator.vibrate) navigator.vibrate(120);
         }
 
-        // Confirmar registros e introducirlos en la estructura de datos
         function commitCurrentItem() {
             const palletNum = document.getElementById('pallet-number').value;
             const mode = document.getElementById('packaging-mode').value;
@@ -291,22 +283,17 @@
             masterData.push(newItem);
             localStorage.setItem('arcor_production_data', JSON.stringify(masterData));
 
-            // Gestión del flujo por tipo de envase
             if (mode === 'tambor') {
                 currentItemCount++;
                 if (currentItemCount >= 4) {
-                    // Completó el pallet de 4 tambores, auto-incrementa número de pallet
-                    let nextPallet = parseInt(palletNum) + 1;
-                    document.getElementById('pallet-number').value = nextPallet;
+                    document.getElementById('pallet-number').value = parseInt(palletNum) + 1;
                     currentItemCount = 0;
                 }
             } else {
-                // Modo Tótem: Cada unidad es un pallet nuevo
-                let nextPallet = parseInt(palletNum) + 1;
-                document.getElementById('pallet-number').value = nextPallet;
+                document.getElementById('pallet-number').value = parseInt(palletNum) + 1;
             }
 
-            // Limpieza rápida de campos para el siguiente escaneo
+            // Limpieza express
             document.getElementById('field-lote').value = "";
             document.getElementById('field-cabezal').value = "";
             document.getElementById('field-fecha').value = "";
@@ -325,7 +312,7 @@
         }
 
         function clearAllData() {
-            if (confirm("¿Estás seguro de que deseas eliminar todos los datos cargados en el teléfono?")) {
+            if (confirm("¿Borrar todo el historial local del teléfono?")) {
                 masterData = [];
                 localStorage.removeItem('arcor_production_data');
                 document.getElementById('pallet-number').value = 1;
@@ -344,17 +331,16 @@
                 return;
             }
 
-            // Muestra los registros en orden inverso para que el operador vea arriba lo último que escaneó
             let html = "";
             for (let i = masterData.length - 1; i >= 0; i--) {
                 const item = masterData[i];
                 html += `
-                    <tr class="hover:bg-gray-100 transition-colors">
+                    <tr class="hover:bg-gray-100 border-b">
                         <td class="p-2 font-bold text-blue-900">${item.pallet}</td>
                         <td class="p-2 font-mono">${item.cabezal}</td>
                         <td class="p-2 font-semibold">${item.pesoNeto} kg</td>
                         <td class="p-2 text-center">
-                            <button onclick="removeRow(${i})" class="text-red-500 hover:text-red-700 font-bold px-2 py-1">✕</button>
+                            <button onclick="removeRow(${i})" class="text-red-500 font-bold px-2">✕</button>
                         </td>
                     </tr>
                 `;
@@ -362,14 +348,12 @@
             tbody.innerHTML = html;
         }
 
-        // Generación nativa y limpia del libro Excel estructurado
         function exportToExcel() {
             if (masterData.length === 0) {
-                alert("No existen datos cargados para exportar.");
+                alert("No hay datos cargados.");
                 return;
             }
 
-            // Mapeo directo respetando la estructura exacta solicitada
             const rowsForExcel = masterData.map(item => ({
                 "PALLET": parseInt(item.pallet),
                 "LOTE": item.lote,
@@ -384,18 +368,10 @@
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Producción");
 
-            // Configurar anchos de columna automáticos para que luzca profesional al abrir
             worksheet["!cols"] = [
-                { wch: 10 }, // PALLET
-                { wch: 12 }, // LOTE
-                { wch: 14 }, // CABEZAL
-                { wch: 14 }, // FECHA FAB
-                { wch: 10 }, // HORA
-                { wch: 14 }, // PESO NETO
-                { wch: 24 }  // OBSERVACIONES
+                { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 24 }
             ];
 
-            // Formato de nombre de archivo con fecha del sistema
             const dateStr = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(workbook, `Planilla_Produccion_${dateStr}.xlsx`);
         }
