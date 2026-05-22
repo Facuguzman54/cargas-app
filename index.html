@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Producción - Tambores y Tótems</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        body {
+            background-color: #EAF0F6;
+        }
+        .scanner-container video {
+            border-radius: 0.5rem;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
+
+    <header class="bg-blue-900 text-white shadow-md p-4 sticky top-0 z-50">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">Control de Pallets</h1>
+                <p class="text-xs text-blue-200">Planta San Juan</p>
+            </div>
+            <div class="bg-blue-800 px-3 py-1.5 rounded-lg text-right">
+                <span class="text-xs block text-blue-300 font-semibold uppercase">Total Filas</span>
+                <span id="global-counter" class="text-lg font-bold">0</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto p-4 space-y-4">
+
+        <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+            <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Configuración de Flujo</h2>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Nro. Pallet Actual</label>
+                    <input type="number" id="pallet-number" value="1" min="1" 
+                           class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Tipo de Envase</label>
+                    <select id="packaging-mode" onchange="handleModeChange()" 
+                            class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="tambor">Tambores (4 por Pallet)</option>
+                        <option value="totem">Tótem (1 por Pallet)</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <span class="font-bold text-sm text-gray-700">Escáner de Etiquetas</span>
+                <span id="scanner-status" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
+                    Apagado
+                </span>
+            </div>
+            <div class="p-4 bg-black flex justify-center items-center relative aspect-video" id="scanner-wrapper">
+                <div id="reader" class="w-full scanner-container"></div>
+            </div>
+            <div class="p-3 bg-gray-50 border-t border-gray-200 flex gap-2">
+                <button onclick="startScanner()" id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm">
+                    Encender Cámara
+                </button>
+                <button onclick="stopScanner()" id="btn-stop" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors shadow-sm hidden">
+                    Detener
+                </button>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-bold text-gray-700">Datos del Ítem Actual</h3>
+                <span id="item-slot-indicator" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Tambor 1 de 4</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <div>
+                    <label class="block text-gray-500 mb-0.5">Lote (DDMMYY)</label>
+                    <input type="text" id="field-lote" class="w-full border rounded p-1.5 font-mono text-sm bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-gray-500 mb-0.5">Cabezal</label>
+                    <input type="text" id="field-cabezal" class="w-full border rounded p-1.5 font-mono text-sm bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-gray-500 mb-0.5">Fecha Fab.</label>
+                    <input type="text" id="field-fecha" class="w-full border rounded p-1.5 text-sm bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-gray-500 mb-0.5">Hora</label>
+                    <input type="text" id="field-hora" class="w-full border rounded p-1.5 text-sm bg-gray-50">
+                </div>
+                <div class="col-span-2 grid grid-cols-3 gap-2 mt-1">
+                    <div class="col-span-1">
+                        <label class="block text-gray-500 mb-0.5 font-bold text-blue-900">Peso Neto</label>
+                        <input type="number" step="0.1" id="field-peso" class="w-full border border-blue-300 font-bold rounded p-1.5 text-sm bg-blue-50">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-gray-500 mb-0.5">Observaciones</label>
+                        <input type="text" id="field-obs" placeholder="Opcional..." class="w-full border rounded p-1.5 text-sm bg-gray-50">
+                    </div>
+                </div>
+            </div>
+            <button onclick="commitCurrentItem()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-sm shadow transition-colors">
+                Confirmar e Ingresar Registro
+            </button>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm font-bold text-gray-700">Registros en Memoria</h3>
+                <button onclick="clearAllData()" class="text-xs font-semibold text-red-600 hover:underline">Limpiar Todo</button>
+            </div>
+            
+            <div class="overflow-x-auto border rounded-lg max-h-60 mb-4 bg-gray-50">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-gray-100 sticky top-0 border-b border-gray-200 text-gray-600 font-bold">
+                        <tr>
+                            <th class="p-2">Pallet</th>
+                            <th class="p-2">Cabezal</th>
+                            <th class="p-2">Peso</th>
+                            <th class="p-2 text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados aún.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <button onclick="exportToExcel()" class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 shadow transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Descargar Reporte Excel (.xlsx)
+            </button>
+        </section>
+    </main>
+
+    <script>
+        let masterData = [];
+        let html5QrCode = null;
+        let currentItemCount = 0; // Controla cuántos tambores van en el pallet activo
+
+        // Inicializar datos al cargar la app
+        window.addEventListener('DOMContentLoaded', () => {
+            if(localStorage.getItem('arcor_production_data')) {
+                masterData = JSON.parse(localStorage.getItem('arcor_production_data'));
+                updateUI();
+            }
+            handleModeChange();
+        });
+
+        function handleModeChange() {
+            const mode = document.getElementById('packaging-mode').value;
+            const indicator = document.getElementById('item-slot-indicator');
+            if (mode === 'totem') {
+                currentItemCount = 0;
+                indicator.innerText = "Modo: Tótem Único";
+                indicator.className = "text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded";
+            } else {
+                indicator.innerText = `Tambor ${currentItemCount + 1} de 4`;
+                indicator.className = "text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded";
+            }
+        }
+
+        // Lógica de parsing del código de barras industrial de Arcor
+        // Cadena tipo detectada: 26021607428927240016310
+        function parseArcorBarcode(rawCode) {
+            const code = rawCode.trim();
+            if (code.length < 23) return null; // Resguardo por variaciones menores
+
+            try {
+                // 1. Fecha de fabricación (YYMMDD -> Posiciones 0 a 6)
+                const yy = code.substring(0, 2);
+                const mm = code.substring(2, 4);
+                const dd = code.substring(4, 6);
+                const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
+                
+                // Formato de Lote estándar según planillas de control (DDMMYY)
+                const lote = `${dd}${mm}${yy}`;
+
+                // 2. Hora de fabricación (HHMM -> Posiciones 6 a 10)
+                const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
+
+                // 3. Peso Neto (Posiciones 14 a 18)
+                // Convierte "2404" a 240.4. Si el código trae "2400", evalúa su división.
+                const rawWeight = parseFloat(code.substring(14, 18));
+                const pesoNeto = (rawWeight / 10).toFixed(1);
+
+                // 4. Cabezal / Número de bolsa (Posiciones 18 a fin)
+                // Regla industrial identificada: El primer dígito determina la serie (1 = A, 2 = B)
+                const headPrefixDigit = code.substring(18, 19);
+                const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
+                const headNumber = code.substring(19);
+                const cabezal = `${letter}${headNumber}`;
+
+                return { lote, cabezal, fechaFab, hora, pesoNeto };
+            } catch (error) {
+                console.error("Error al procesar la cadena del código:", error);
+                return null;
+            }
+        }
+
+        // Control del hardware de la cámara
+        function startScanner() {
+            document.getElementById('btn-start').classList.add('hidden');
+            document.getElementById('btn-stop').classList.remove('hidden');
+            
+            const statusLabel = document.getElementById('scanner-status');
+            statusLabel.innerText = "Escaneando...";
+            statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 animate-pulse";
+
+            html5QrCode = new Html5Qrcode("reader");
+            
+            // Configuración optimizada para lectura de códigos lineales de barras de alta densidad
+            const config = { 
+                fps: 15, 
+                qrbox: (width, height) => {
+                    return { width: Math.floor(width * 0.85), height: Math.floor(height * 0.4) }
+                }
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config,
+                (decodedText) => {
+                    // Éxito de lectura
+                    vibrateDevice();
+                    const parsed = parseArcorBarcode(decodedText);
+                    
+                    if (parsed) {
+                        document.getElementById('field-lote').value = parsed.lote;
+                        document.getElementById('field-cabezal').value = parsed.cabezal;
+                        document.getElementById('field-fecha').value = parsed.fechaFab;
+                        document.getElementById('field-hora').value = parsed.hora;
+                        document.getElementById('field-peso').value = parsed.pesoNeto;
+                    } else {
+                        // Si falla la estructura predefinida, inyecta la cadena completa en observaciones para no perder datos
+                        document.getElementById('field-obs').value = "Error parseo - Cód: " + decodedText;
+                    }
+                },
+                (errorMessage) => {
+                    // Log silencioso para evitar saturación de consola durante escaneo dinámico
+                }
+            ).catch(err => {
+                alert("Error al iniciar cámara: " + err);
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('btn-start').classList.remove('hidden');
+                    document.getElementById('btn-stop').classList.add('hidden');
+                    const statusLabel = document.getElementById('scanner-status');
+                    statusLabel.innerText = "Apagado";
+                    statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
+                }).catch(err => console.error(err));
+            }
+        }
+
+        function vibrateDevice() {
+            if (navigator.vibrate) {
+                navigator.vibrate(150);
+            }
+        }
+
+        // Confirmar registros e introducirlos en la estructura de datos
+        function commitCurrentItem() {
+            const palletNum = document.getElementById('pallet-number').value;
+            const mode = document.getElementById('packaging-mode').value;
+
+            const newItem = {
+                pallet: palletNum,
+                lote: document.getElementById('field-lote').value || "-",
+                cabezal: document.getElementById('field-cabezal').value || "-",
+                fechaFab: document.getElementById('field-fecha').value || "-",
+                hora: document.getElementById('field-hora').value || "-",
+                pesoNeto: document.getElementById('field-peso').value || "0",
+                observaciones: document.getElementById('field-obs').value || ""
+            };
+
+            masterData.push(newItem);
+            localStorage.setItem('arcor_production_data', JSON.stringify(masterData));
+
+            // Gestión del flujo por tipo de envase
+            if (mode === 'tambor') {
+                currentItemCount++;
+                if (currentItemCount >= 4) {
+                    // Completó el pallet de 4 tambores, auto-incrementa número de pallet
+                    let nextPallet = parseInt(palletNum) + 1;
+                    document.getElementById('pallet-number').value = nextPallet;
+                    currentItemCount = 0;
+                }
+            } else {
+                // Modo Tótem: Cada unidad es un pallet nuevo
+                let nextPallet = parseInt(palletNum) + 1;
+                document.getElementById('pallet-number').value = nextPallet;
+            }
+
+            // Limpieza rápida de campos para el siguiente escaneo
+            document.getElementById('field-lote').value = "";
+            document.getElementById('field-cabezal').value = "";
+            document.getElementById('field-fecha').value = "";
+            document.getElementById('field-hora').value = "";
+            document.getElementById('field-peso').value = "";
+            document.getElementById('field-obs').value = "";
+
+            handleModeChange();
+            updateUI();
+        }
+
+        function removeRow(index) {
+            masterData.splice(index, 1);
+            localStorage.setItem('arcor_production_data', JSON.stringify(masterData));
+            updateUI();
+        }
+
+        function clearAllData() {
+            if (confirm("¿Estás seguro de que deseas eliminar todos los datos cargados en el teléfono?")) {
+                masterData = [];
+                localStorage.removeItem('arcor_production_data');
+                document.getElementById('pallet-number').value = 1;
+                currentItemCount = 0;
+                handleModeChange();
+                updateUI();
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('global-counter').innerText = masterData.length;
+            const tbody = document.getElementById('table-body');
+            
+            if (masterData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados aún.</td></tr>`;
+                return;
+            }
+
+            // Muestra los registros en orden inverso para que el operador vea arriba lo último que escaneó
+            let html = "";
+            for (let i = masterData.length - 1; i >= 0; i--) {
+                const item = masterData[i];
+                html += `
+                    <tr class="hover:bg-gray-100 transition-colors">
+                        <td class="p-2 font-bold text-blue-900">${item.pallet}</td>
+                        <td class="p-2 font-mono">${item.cabezal}</td>
+                        <td class="p-2 font-semibold">${item.pesoNeto} kg</td>
+                        <td class="p-2 text-center">
+                            <button onclick="removeRow(${i})" class="text-red-500 hover:text-red-700 font-bold px-2 py-1">✕</button>
+                        </td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = html;
+        }
+
+        // Generación nativa y limpia del libro Excel estructurado
+        function exportToExcel() {
+            if (masterData.length === 0) {
+                alert("No existen datos cargados para exportar.");
+                return;
+            }
+
+            // Mapeo directo respetando la estructura exacta solicitada
+            const rowsForExcel = masterData.map(item => ({
+                "PALLET": parseInt(item.pallet),
+                "LOTE": item.lote,
+                "CABEZAL": item.cabezal,
+                "FECHA FAB": item.fechaFab,
+                "HORA": item.hora,
+                "PESO NETO": parseFloat(item.pesoNeto),
+                "OBSERVACIONES": item.observaciones
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(rowsForExcel);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Producción");
+
+            // Configurar anchos de columna automáticos para que luzca profesional al abrir
+            worksheet["!cols"] = [
+                { wch: 10 }, // PALLET
+                { wch: 12 }, // LOTE
+                { wch: 14 }, // CABEZAL
+                { wch: 14 }, // FECHA FAB
+                { wch: 10 }, // HORA
+                { wch: 14 }, // PESO NETO
+                { wch: 24 }  // OBSERVACIONES
+            ];
+
+            // Formato de nombre de archivo con fecha del sistema
+            const dateStr = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(workbook, `Planilla_Produccion_${dateStr}.xlsx`);
+        }
+    </script>
+</body>
+</html>
