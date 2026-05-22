@@ -162,10 +162,6 @@
     <script>
         let masterData = [];
         let html5QrCode = null;
-        let useBarcodeDetector = false;
-        let barcodeDetector = null;
-        let barcodeStream = null;
-        let barcodeDetectionActive = false;
         let selectedCameraId = '';
         let lastDecodedKey = '';
         let lastDecodedAt = 0;
@@ -383,11 +379,7 @@
             statusLabel.innerText = "Escaneando...";
             statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 animate-pulse";
 
-            useBarcodeDetector = false;
-            barcodeDetector = null;
-            barcodeDetectionActive = false;
-
-            // Decide whether to use native BarcodeDetector (faster for 1D) or html5-qrcode fallback
+            // Escaneo unicamente con html5-qrcode para maxima compatibilidad
             html5QrCode = new Html5Qrcode("reader");
 
             // Ajuste del cuadro de enfoque: Al ser un código de barra de formato ancho (1D),
@@ -406,63 +398,17 @@
             // Html5Qrcode accepts either a cameraId string or a config with facingMode.
             const cameraConfig = selectedCameraId || { facingMode: "environment" };
 
-            // helper to start html5-qrcode path
-            function startHtml5QrCode(cfg) {
-                html5QrCode.start(
-                    cameraConfig,
-                    cfg,
-                    (decodedText) => {
-                        handleDecodedText(decodedText);
-                    },
-                    (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
-                ).catch(err => {
-                    alert("Error de cámara: " + err);
-                    stopScanner();
-                });
-            }
-
-            (async () => {
-                if ('BarcodeDetector' in window) {
-                    try {
-                        const supported = await BarcodeDetector.getSupportedFormats();
-                        if (supported && supported.includes('code_128')) {
-                            barcodeDetector = new BarcodeDetector({ formats: ['code_128'] });
-                            useBarcodeDetector = true;
-                        }
-                    } catch (e) {
-                        useBarcodeDetector = false;
-                    }
-                }
-
-                if (useBarcodeDetector) {
-                    // Start camera stream and attach to a video element inside #reader
-                    try {
-                        const videoConstraints = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' };
-                        const constraints = { video: videoConstraints };
-                        barcodeStream = await navigator.mediaDevices.getUserMedia(constraints);
-                        const readerEl = document.getElementById('reader');
-                        readerEl.innerHTML = '';
-                        const video = document.createElement('video');
-                        video.autoplay = true;
-                        video.playsInline = true;
-                        video.muted = true;
-                        video.style.width = '100%';
-                        video.style.height = '100%';
-                        readerEl.appendChild(video);
-                        video.srcObject = barcodeStream;
-                        await video.play();
-
-                        barcodeDetectionActive = true;
-                        barcodeDetectLoop(video);
-                    } catch (err) {
-                        // Fall back to html5-qrcode if getUserMedia fails
-                        useBarcodeDetector = false;
-                        startHtml5QrCode(config);
-                    }
-                } else {
-                    startHtml5QrCode(config);
-                }
-            })();
+            html5QrCode.start(
+                cameraConfig,
+                config,
+                (decodedText) => {
+                    handleDecodedText(decodedText);
+                },
+                (errorMessage) => { /* Silenciar alertas de no-detección instantánea */ }
+            ).catch(err => {
+                alert("Error de cámara: " + err);
+                stopScanner();
+            });
 
             // Intentar ajustar parámetros del track (zoom / focus) cuando esté disponible
             setTimeout(() => {
@@ -485,8 +431,7 @@
         }
 
         function stopScanner() {
-            // Stop html5-qrcode if active
-            if (html5QrCode && !useBarcodeDetector) {
+            if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     document.getElementById('btn-start').classList.remove('hidden');
                     document.getElementById('btn-stop').classList.add('hidden');
@@ -495,74 +440,10 @@
                     statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
                 }).catch(err => console.error(err));
             }
-
-            // Stop BarcodeDetector / getUserMedia path
-            if (useBarcodeDetector && barcodeStream) {
-                barcodeDetectionActive = false;
-                try {
-                    barcodeStream.getTracks().forEach(t => t.stop());
-                } catch (e) { /* ignore */ }
-                barcodeStream = null;
-                // Reset reader HTML to original placeholder
-                const readerEl = document.getElementById('reader');
-                readerEl.innerHTML = '';
-                const placeholder = document.createElement('div');
-                placeholder.className = 'w-full scanner-container';
-                placeholder.style.height = '100%';
-                readerEl.appendChild(placeholder);
-
-                document.getElementById('btn-start').classList.remove('hidden');
-                document.getElementById('btn-stop').classList.add('hidden');
-                const statusLabel = document.getElementById('scanner-status');
-                statusLabel.innerText = "Apagado";
-                statusLabel.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800";
-            }
         }
 
         function vibrateDevice() {
             if (navigator.vibrate) navigator.vibrate(120);
-        }
-
-        // Loop that feeds video frames to BarcodeDetector
-        async function barcodeDetectLoop(video) {
-            const overlay = document.getElementById('scan-overlay');
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            while (barcodeDetectionActive) {
-                try {
-                    if (video.readyState < 2) {
-                        await new Promise(r => setTimeout(r, 50));
-                        continue;
-                    }
-
-                    // Scale canvas to video size (small to improve perf)
-                    const vw = video.videoWidth;
-                    const vh = video.videoHeight;
-                    if (!vw || !vh) { await new Promise(r => setTimeout(r, 50)); continue; }
-                    const scale = 0.6; // downscale to speed
-                    canvas.width = Math.floor(vw * scale);
-                    canvas.height = Math.floor(vh * scale);
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    const imageBitmap = await createImageBitmap(canvas);
-                    const results = await barcodeDetector.detect(imageBitmap);
-                    imageBitmap.close();
-
-                    if (results && results.length) {
-                        // Use the first detection
-                        const decodedText = results[0].rawValue || results[0].rawValue;
-                        handleDecodedText(decodedText);
-                        // short pause to avoid duplicate reads
-                        await new Promise(r => setTimeout(r, 700));
-                    } else {
-                        await new Promise(r => setTimeout(r, 80));
-                    }
-                } catch (e) {
-                    // If detect throws, wait a bit and continue
-                    await new Promise(r => setTimeout(r, 200));
-                }
-            }
         }
 
         // Mostrar un indicador visual de foco en la superposición
