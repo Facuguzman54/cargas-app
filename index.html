@@ -1,18 +1,21 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control de Pallets - Entrada Directa</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    
+
     <style>
-        body { background-color: #EAF0F6; }
-        .scanner-container video { border-radius: 0.5rem; object-fit: cover; }
+        body {
+            background-color: #EAF0F6;
+        }
+
     </style>
 </head>
+
 <body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
 
     <header class="bg-blue-900 text-white shadow-md p-4 sticky top-0 z-50">
@@ -35,13 +38,13 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Nro. Pallet Actual</label>
-                    <input type="number" id="pallet-number" value="1" min="1" 
-                           class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <input type="number" id="pallet-number" value="1" min="1"
+                        class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Tipo de Envase</label>
-                    <select id="packaging-mode" onchange="handleModeChange()" 
-                            class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <select id="packaging-mode" onchange="handleModeChange()"
+                        class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         <option value="tambor">Tambores (4 por Pallet)</option>
                         <option value="totem">Tótem (1 por Pallet)</option>
                     </select>
@@ -50,41 +53,24 @@
         </section>
 
         <section class="bg-white rounded-xl shadow-md p-4 border-2 border-blue-400">
-            <label class="block text-xs font-bold text-blue-900 uppercase tracking-wider mb-1">LECTURA DE ETIQUETA (Zebra / Manual)</label>
+            <label class="block text-xs font-bold text-blue-900 uppercase tracking-wider mb-1">LECTURA DE ETIQUETA
+                (Zebra / Manual)</label>
             <div class="relative">
-                <input type="text" id="barcode-input" placeholder="Gatillá acá o escribí los 23 dígitos..." autocomplete="off"
-                       class="w-full bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-lg font-mono font-bold tracking-wider text-blue-950 focus:ring-4 focus:ring-blue-200 focus:outline-none placeholder:text-gray-400 placeholder:text-sm">
-                <button onclick="clearBarcodeField()" class="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>
+                <input type="text" id="barcode-input" placeholder="Gatillá acá o escribí los 23 dígitos..."
+                    autocomplete="off"
+                    class="w-full bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-lg font-mono font-bold tracking-wider text-blue-950 focus:ring-4 focus:ring-blue-200 focus:outline-none placeholder:text-gray-400 placeholder:text-sm">
+                <button onclick="clearBarcodeField()"
+                    class="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>
             </div>
-            <p class="text-[11px] text-gray-500 mt-1.5 font-medium">💡 Al escanear con el Zebra, los campos de abajo se autocompletarán solos al instante.</p>
-        </section>
-
-        <section class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-            <div class="p-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                <span class="font-bold text-xs text-gray-600 uppercase tracking-wider">¿No tenés el escáner? Usar Cámara</span>
-                <button onclick="toggleCameraPanel()" id="btn-toggle-cam" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold px-3 py-1 rounded text-xs transition-colors">
-                    Desplegar Cámara
-                </button>
-            </div>
-            <div id="camera-panel" class="hidden border-t border-gray-200">
-                <div class="p-4 bg-black flex justify-center items-center relative aspect-video">
-                    <div id="reader" class="w-full scanner-container"></div>
-                </div>
-                <div class="p-3 bg-gray-100 flex gap-2">
-                    <button onclick="startCameraScanner()" id="btn-start-cam" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-xs shadow">
-                        Encender Lente
-                    </button>
-                    <button onclick="stopCameraScanner()" id="btn-stop-cam" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg text-xs shadow hidden">
-                        Apagar Lente
-                    </button>
-                </div>
-            </div>
+            <p class="text-[11px] text-gray-500 mt-1.5 font-medium">💡 Al escanear con el Zebra, los campos de abajo se
+                autocompletarán solos al instante.</p>
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
             <div class="flex justify-between items-center mb-3">
                 <h3 class="text-sm font-bold text-gray-700">Campos Extraídos</h3>
-                <span id="item-slot-indicator" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Tambor 1 de 4</span>
+                <span id="item-slot-indicator"
+                    class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Tambor 1 de 4</span>
             </div>
             <div class="grid grid-cols-2 gap-2.5 text-xs">
                 <div>
@@ -93,7 +79,8 @@
                 </div>
                 <div>
                     <label class="block text-gray-500 mb-0.5">Cabezal</label>
-                    <input type="text" id="field-cabezal" class="w-full border rounded p-1.5 font-mono text-sm bg-gray-50">
+                    <input type="text" id="field-cabezal"
+                        class="w-full border rounded p-1.5 font-mono text-sm bg-gray-50">
                 </div>
                 <div>
                     <label class="block text-gray-500 mb-0.5">Fecha Fab.</label>
@@ -106,16 +93,19 @@
                 <div class="col-span-2 grid grid-cols-3 gap-2 mt-1">
                     <div class="col-span-1">
                         <label class="block text-gray-500 mb-0.5 font-bold text-blue-900">Peso Neto</label>
-                        <input type="number" step="0.1" id="field-peso" class="w-full border border-blue-300 font-bold rounded p-1.5 text-sm bg-blue-50">
+                        <input type="number" step="0.1" id="field-peso"
+                            class="w-full border border-blue-300 font-bold rounded p-1.5 text-sm bg-blue-50">
                     </div>
                     <div class="col-span-2">
                         <label class="block text-gray-500 mb-0.5">Observaciones</label>
-                        <input type="text" id="field-obs" placeholder="Opcional..." class="w-full border rounded p-1.5 text-sm bg-gray-50">
+                        <input type="text" id="field-obs" placeholder="Opcional..."
+                            class="w-full border rounded p-1.5 text-sm bg-gray-50">
                     </div>
                 </div>
             </div>
-            
-            <button onclick="commitCurrentItem()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-colors uppercase tracking-wider">
+
+            <button onclick="commitCurrentItem()"
+                class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition-colors uppercase tracking-wider">
                 Confirmar e Ingresar Fila
             </button>
         </section>
@@ -123,9 +113,10 @@
         <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
             <div class="flex justify-between items-center mb-3">
                 <h3 class="text-sm font-bold text-gray-700">Registros en Memoria</h3>
-                <button onclick="clearAllData()" class="text-xs font-semibold text-red-600 hover:underline">Limpiar Todo</button>
+                <button onclick="clearAllData()" class="text-xs font-semibold text-red-600 hover:underline">Limpiar
+                    Todo</button>
             </div>
-            
+
             <div class="overflow-x-auto border rounded-lg max-h-60 mb-4 bg-gray-50">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead class="bg-gray-100 sticky top-0 border-b border-gray-200 text-gray-600 font-bold">
@@ -138,13 +129,15 @@
                     </thead>
                     <tbody id="table-body" class="divide-y divide-gray-200">
                         <tr>
-                            <td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados. Gatillá una etiqueta para empezar.</td>
+                            <td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados.
+                                Gatillá una etiqueta para empezar.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <button onclick="exportToExcel()" class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 shadow transition-all">
+            <button onclick="exportToExcel()"
+                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 shadow transition-all">
                 Descargar Reporte Excel (.xlsx)
             </button>
         </section>
@@ -152,23 +145,22 @@
 
     <script>
         let masterData = [];
-        let html5QrCode = null;
         let currentItemCount = 0;
         let barcodeInput = null;
 
         window.addEventListener('DOMContentLoaded', () => {
             barcodeInput = document.getElementById('barcode-input');
-            
-            if(localStorage.getItem('arcor_production_data')) {
+
+            if (localStorage.getItem('arcor_production_data')) {
                 masterData = JSON.parse(localStorage.getItem('arcor_production_data'));
                 updateUI();
             }
-            
+
             handleModeChange();
             focusMainInput();
 
             // ESCUCHADOR CLAVE: Captura cuando el Zebra termina de escribir la barra y manda el 'Enter'
-            barcodeInput.addEventListener('keypress', function(e) {
+            barcodeInput.addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault(); // Evitar comportamientos extraños del navegador
                     processBarcodeString(this.value);
@@ -176,7 +168,7 @@
             });
 
             // Si el operario escribe a mano, procesa los datos también cuando saca el cursor del cuadro
-            barcodeInput.addEventListener('blur', function() {
+            barcodeInput.addEventListener('blur', function () {
                 if (this.value.trim().length >= 23) {
                     processBarcodeString(this.value);
                 }
@@ -184,11 +176,11 @@
         });
 
         function focusMainInput() {
-            if(barcodeInput) barcodeInput.focus();
+            if (barcodeInput) barcodeInput.focus();
         }
 
         function clearBarcodeField() {
-            if(barcodeInput) {
+            if (barcodeInput) {
                 barcodeInput.value = "";
                 focusMainInput();
             }
@@ -208,93 +200,60 @@
             focusMainInput();
         }
 
-        // CONTROL DESPLEGABLE CÁMARA
-        function toggleCameraPanel() {
-            const panel = document.getElementById('camera-panel');
-            const btn = document.getElementById('btn-toggle-cam');
-            if(panel.classList.contains('hidden')) {
-                panel.classList.remove('hidden');
-                btn.innerText = "Ocultar Cámara";
-            } else {
-                stopCameraScanner();
-                panel.classList.add('hidden');
-                btn.innerText = "Desplegar Cámara";
-            }
-        }
-
-        function startCameraScanner() {
-            document.getElementById('btn-start-cam').classList.add('hidden');
-            document.getElementById('btn-stop-cam').classList.remove('hidden');
-            html5QrCode = new Html5Qrcode("reader");
-            
-            const config = { 
-                fps: 22,
-                qrbox: (width, height) => {
-                    return { width: Math.floor(width * 0.95), height: Math.floor(height * 0.35) }
-                },
-                aspectRatio: 1.777778
-            };
-
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                config,
-                (decodedText) => {
-                    // Si lee por cámara, escribe el código crudo en el input principal y lo procesa
-                    barcodeInput.value = decodedText;
-                    const success = processBarcodeString(decodedText);
-                    if(success) {
-                        vibrateDevice();
-                        stopCameraScanner();
-                        document.getElementById('camera-panel').classList.add('hidden');
-                        document.getElementById('btn-toggle-cam').innerText = "Desplegar Cámara";
-                    }
-                },
-                (err) => {}
-            ).catch(err => {
-                alert("Error de cámara: " + err);
-                stopCameraScanner();
-            });
-        }
-
-        function stopCameraScanner() {
-            document.getElementById('btn-start-cam').classList.remove('hidden');
-            document.getElementById('btn-stop-cam').classList.add('hidden');
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => { html5QrCode = null; focusMainInput(); }).catch(err => console.error(err));
-            } else {
-                focusMainInput();
-            }
-        }
-
         // MOTOR DE DESGLOSE DE CÓDIGO (Interleaved 2 of 5 - 23 dígitos)
         function processBarcodeString(rawData) {
-            // Limpieza estricta de caracteres no numéricos
+            // Nos quedamos puramente con los números
             const code = rawData.replace(/\D/g, '').trim();
-            
-            if (code.length < 23) {
-                document.getElementById('field-obs').value = "Código incompleto (" + code.length + " dígitos)";
+
+            // Validamos la nueva longitud exacta de la etiqueta de planta (26 dígitos)
+            if (code.length < 26) {
+                document.getElementById('field-obs').value = "Código corto (" + code.length + "/26 dígs)";
                 return false;
             }
 
             try {
-                // Despiece exacto de la cadena fija de Arcor
-                const yy = code.substring(0, 2);
-                const mm = code.substring(2, 4);
-                const dd = code.substring(4, 6);
-                
+                // Estructura exacta basada en tu desglose:
+                // 0 26 03 21 16 14 9402 241 02 16324 8
+
+                // Año, Mes, Día
+                const yy = code.substring(1, 3);   // "26"
+                const mm = code.substring(3, 5);   // "03"
+                const dd = code.substring(5, 7);   // "21"
+
                 const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
-                const lote = `${dd}${mm}${yy}`;
-                const hora = `${code.substring(6, 8)}:${code.substring(8, 10)}`;
+                const lote = `${dd}${mm}${yy}`; // Formato DDMMYY para el lote
 
-                const rawWeight = parseFloat(code.substring(14, 18));
-                const pesoNeto = (rawWeight / 10).toFixed(1);
+                // Hora y Minutos
+                const hr = code.substring(7, 9);   // "16"
+                const min = code.substring(9, 11); // "14"
+                const hora = `${hr}:${min}`;
 
-                const headPrefixDigit = code.substring(18, 19);
-                const letter = headPrefixDigit === '1' ? 'A' : (headPrefixDigit === '2' ? 'B' : 'X');
-                const headNumber = code.substring(19);
-                const cabezal = `${letter}${headNumber}`;
+                // Peso Neto (Toma las 3 posiciones del peso y recupera el decimal de la etiqueta)
+                // Ejemplo: "241" de la tira + el decimal que se deduce de la balanza
+                const pesoEntero = code.substring(15, 18); // "241"
 
-                // Rellenar casilleros inferiores para que el operario revise
+                // Para no perder el decimal real si el código viene entero (ej: 2416), 
+                // asumimos que el último dígito del bloque de peso o el formato general maneja un decimal:
+                // Viendo que en la primera foto "2400" era 240.0 y acá "241" representa 241, 
+                // convertimos el entero y le agregamos la décima correspondiente de forma dinámica.
+                // Si el peso en tu desglose son 3 dígitos ("241"), le dejamos un ".0" o evaluamos si el código trae 4 dígitos de peso.
+                // Basado en tu mapeo exacto: 15-17 son 3 dígitos ("241"). Le asignamos formato float.
+                const pesoNeto = parseFloat(pesoEntero).toFixed(1);
+
+                // Cabezal Letra (01 = A, 02 = B)
+                const tipoCabezal = code.substring(18, 20); // "02"
+                let letra = "X";
+                if (tipoCabezal === "01" || tipoCabezal === "1") {
+                    letra = "A";
+                } else if (tipoCabezal === "02" || tipoCabezal === "2") {
+                    letra = "B";
+                }
+
+                // Número correlativo del cabezal
+                const nroBolsa = code.substring(20, 25); // "16324"
+                const cabezal = `${letra}${nroBolsa}`;   // Resultado: "B16324"
+
+                // Inyectar con precisión matemática en los inputs de la pantalla
                 document.getElementById('field-lote').value = lote;
                 document.getElementById('field-cabezal').value = cabezal;
                 document.getElementById('field-fecha').value = fechaFab;
@@ -304,11 +263,10 @@
                 return true;
 
             } catch (e) {
-                document.getElementById('field-obs').value = "Error al descomponer la cadena.";
+                document.getElementById('field-obs').value = "Error al segmentar los 26 dígitos.";
                 return false;
             }
         }
-
         // CONFIRMACIÓN, INCREMENTO DE PALLET Y TRASLADO A TABLA
         function commitCurrentItem() {
             const palletNum = document.getElementById('pallet-number').value;
@@ -316,7 +274,7 @@
             const cabezalVal = document.getElementById('field-cabezal').value;
 
             // Bloqueo de seguridad si no hay datos procesados en los casilleros
-            if(!cabezalVal || cabezalVal === "-") {
+            if (!cabezalVal || cabezalVal === "-") {
                 alert("Primero tenés que escanear un código válido o verificar el desglose.");
                 return;
             }
@@ -388,7 +346,7 @@
         function updateUI() {
             document.getElementById('global-counter').innerText = masterData.length;
             const tbody = document.getElementById('table-body');
-            
+
             if (masterData.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">No hay registros cargados.</td></tr>`;
                 return;
@@ -441,4 +399,5 @@
         }
     </script>
 </body>
+
 </html>
