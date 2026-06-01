@@ -201,18 +201,17 @@
         }
 
         // MOTOR DE DESGLOSE DE CÓDIGO (Interleaved 2 of 5 - 23 dígitos)
- function processBarcodeString(rawData) {
-    // Limpieza de caracteres no numéricos
+function processBarcodeString(rawData) {
+    // Limpieza estricta de caracteres no numéricos
     const code = rawData.replace(/\D/g, '').trim();
     
-    // Filtro mínimo de seguridad
     if (code.length < 20) {
-        document.getElementById('field-obs').value = "Código demasiado corto (" + code.length + " dígs)";
+        document.getElementById('field-obs').value = "Código corto (" + code.length + " dígs)";
         return false;
     }
 
     try {
-        // 1. EXTRAER LO QUE SIEMPRE ES FIJO (Los primeros 11 dígitos)
+        // 1. LO QUE SIEMPRE ES FIJO (Los primeros 11 dígitos de tiempo)
         const yy = code.substring(1, 3);   
         const mm = code.substring(3, 5);   
         const dd = code.substring(5, 7);   
@@ -223,55 +222,53 @@
         const lote = `${dd}${mm}${yy}`;
         const hora = `${hr}:${min}`;
 
-        // 2. EL RESTO DEL CÓDIGO (Desde la posición 11 en adelante)
-        // Ejemplo etiqueta 2: "9402 241 02 16324 8"
-        // Ejemplo etiqueta 1: "8927 2400 1 6310"
-        const elResto = code.substring(11);
+        // 2. LEER DESDE EL FINAL HACIA ATRÁS PARA EVITAR "02" FALSOS
+        // Quitamos el último dígito random (posición final)
+        const codigoSinVerificador = code.slice(0, -1); 
 
         let pesoNeto = "0.0";
         let cabezal = "-";
 
-        // 3. DETECTAR EL TIPO DE CABEZAL Y EXTRAER VARIABLES DILATABLES
-        // Buscamos los patrones de Cabezal B ("02") o Cabezal A ("01" o "1" después del peso)
-        if (elResto.includes("02")) {
-            // Caso Cabezal B (Formato nuevo de 26 dígitos o similar)
-            // Partimos el bloque donde está el "02"
-            const partes = elResto.split("02");
-            const bloquePeso = partes[0].substring(4); // Sacamos los 4 del cod_producto (9402) -> queda "241"
-            
-            // Si el peso es "241", le agregamos la décima que falta o si vino con 4 dígitos (ej: 2416) la calcula
-            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
-            
-            // El número de cabezal es lo que sigue después del "02" (quitando el dígito verificador final)
-            const restoCabezal = partes[1]; 
-            const nroCabezal = restoCabezal.substring(0, restoCabezal.length - 1); // Quita el último dígito random
+        // Buscamos dónde está el marcador real de cabezal (02 para B, 01 para A) 
+        // pero buscando la ÚLTIMA aparición en la cadena, que es la que define al cabezal.
+        const indiceB = codigoSinVerificador.lastIndexOf("02");
+        const indiceA = codigoSinVerificador.lastIndexOf("01");
+
+        // Evaluamos cuál de los dos índices es el correcto (el que aparezca más al final)
+        if (indiceB !== -1 && indiceB > indiceA && indiceB > 11) {
+            // CASO CABEZAL B
+            // El número de cabezal es todo lo que sigue después del "02" real hasta el final (menos el verificador)
+            const nroCabezal = codigoSinVerificador.substring(indiceB + 2);
             cabezal = `B${parseInt(nroCabezal)}`;
 
-        } else if (elResto.includes("01")) {
-            // Caso Cabezal A (Formato con "01")
-            const partes = elResto.split("01");
-            const bloquePeso = partes[0].substring(4);
-            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
+            // El peso está JUSTO ANTES del "02". El código de producto ocupa del dígito 11 al 15.
+            // Así que el peso está entre la posición 15 y el inicio del "02".
+            const bloquePeso = codigoSinVerificador.substring(15, indiceB);
             
-            const restoCabezal = partes[1];
-            const nroCabezal = restoCabezal.substring(0, restoCabezal.length - 1);
+            // Si el bloque de peso tiene 3 dígitos (ej: "241") o 4 (ej: "2416"), extraemos el decimal correspondiente
+            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
+
+        } else if (indiceA !== -1 && indiceA > 11) {
+            // CASO CABEZAL A
+            const nroCabezal = codigoSinVerificador.substring(indiceA + 2);
             cabezal = `A${parseInt(nroCabezal)}`;
 
-        } else {
-            // CASO HISTÓRICO/ALTERNO (Ejemplo etiqueta 1: usa un solo dígito "1" para A o "2" para B)
-            // Como el código de producto mide 4, los siguientes 4 dígitos suelen ser el peso (ej: 2400 -> 240.0)
-            const bloquePeso = elResto.substring(4, 8); // Posición 4 a 8 del resto
-            pesoNeto = (parseFloat(bloquePeso) / 10).toFixed(1);
+            const bloquePeso = codigoSinVerificador.substring(15, indiceA);
+            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
 
-            const identificadorLetra = elResto.substring(8, 9); // El dígito "1" o "2"
+        } else {
+            // CASO HISTÓRICO (Etiquetas viejas de un solo dígito "1" o "2")
+            const elResto = code.substring(11);
+            const bloquePeso = elResto.substring(4, 8); 
+            pesoNeto = bloquePeso;
+
+            const identificadorLetra = elResto.substring(8, 9); 
             const letra = identificadorLetra === "1" ? "A" : (identificadorLetra === "2" ? "B" : "X");
-            
-            // El resto de la cadena es el número de cabezal completo
             const nroCabezal = elResto.substring(9);
-            cabezal = `${letra}${parseInt(nroCabezal)}`; // parseInt limpia ceros basura si los hubiera
+            cabezal = `${letra}${parseInt(nroCabezal)}`;
         }
 
-        // 4. INYECTAR EN LA INTERFAZ
+        // 3. INYECTAR VALORES EN LA PANTALLA
         document.getElementById('field-lote').value = lote;
         document.getElementById('field-cabezal').value = cabezal;
         document.getElementById('field-fecha').value = fechaFab;
@@ -281,7 +278,7 @@
         return true;
 
     } catch (e) {
-        document.getElementById('field-obs').value = "Error en desglose dinámico.";
+        document.getElementById('field-obs').value = "Error en análisis por reverso.";
         return false;
     }
 }
