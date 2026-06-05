@@ -82,18 +82,17 @@ function processBarcodeString(rawData) {
     // 1. Limpieza de caracteres: nos quedamos solo con los números
     let code = rawData.replace(/\D/g, '').trim();
     
-    // 2. Control de inicio: Aseguramos que empiece con "0"
+    // 2. Control de inicio automático: Si NO empieza con "0", se lo agregamos nosotros
     if (!code.startsWith('0')) {
-        document.getElementById('field-obs').value = "Error: Debe empezar con 0";
-        return false;
+        code = '0' + code;
     }
 
     // 3. Quitar el último dígito verificador/random
     code = code.slice(0, -1); 
 
-    // Validación de longitud mínima segura con el código ya recortado (21 fijos + nro cabezal)
+    // Validación de longitud mínima segura con el código ya normalizado (21 fijos + nro cabezal)
     if (code.length < 22) {
-        document.getElementById('field-obs').value = "Código corto tras recorte";
+        document.getElementById('field-obs').value = "Código corto tras ajuste";
         return false;
     }
 
@@ -102,7 +101,7 @@ function processBarcodeString(rawData) {
         // Estructura: 0 [YY][MM][DD] [HH][MM] [PROD] [PESO] [CAB] [NRO_CABEZAL]
         // Ejemplo:    0  26  03  01   06  22   7242   1201   01   7917
 
-        // Extracción de Fecha y Lote (Posiciones indexadas fijas)
+        // Extracción de Fecha y Lote
         const yy = code.substring(1, 3);   // Año (ej: "26")
         const mm = code.substring(3, 5);   // Mes (ej: "03")
         const dd = code.substring(5, 7);   // Día (ej: "01")
@@ -115,12 +114,12 @@ function processBarcodeString(rawData) {
         const min = code.substring(9, 11); // Minutos (ej: "22")
         const hora = `${hr}:${min}`;
 
-        // Extracción de Peso Neto (Siempre ocupa 4 posiciones: de la 15 a la 19)
-        const rawPeso = code.substring(15, 19); // ej: "1201" o "2400"
-        const pesoNeto = (parseFloat(rawPeso) / 10).toFixed(1); // ej: "120.1" o "240.0"
+        // Extracción de Peso Neto como Número ENTERO
+        const rawPeso = code.substring(15, 19); // Captura las 4 posiciones del peso (ej: "1201")
+        const pesoNeto = parseInt(rawPeso);     // Lo convierte a entero directamente (ej: 1201)
 
         // Extracción de Cabezal e Identificador (Posiciones 19 y 20)
-        const tipoCabezal = code.substring(19, 21); // "01" o "02" (o históricamente "1" o "2")
+        const tipoCabezal = code.substring(19, 21); // "01" o "02"
         let letra = "X";
         if (tipoCabezal === "01" || tipoCabezal === "1") {
             letra = "A";
@@ -128,16 +127,16 @@ function processBarcodeString(rawData) {
             letra = "B";
         }
         
-        // El Número de Cabezal arranca SIEMPRE en la posición 21 y se estira hasta el final
+        // El Número de Cabezal arranca siempre en la posición 21
         const nroCabezal = code.substring(21); // Agarra "7917", "16324", etc.
-        const cabezal = `${letra}${parseInt(nroCabezal)}`; // limpia ceros basura a la izquierda si los hubiera
+        const cabezal = `${letra}${parseInt(nroCabezal)}`; // limpia ceros basura a la izquierda
 
-        // 4. Inyección limpia y directa en los inputs de la pantalla
+        // 4. Inyección limpia en los inputs de la pantalla
         document.getElementById('field-lote').value = lote;
         document.getElementById('field-cabezal').value = cabezal;
         document.getElementById('field-fecha').value = fechaFab;
         document.getElementById('field-hora').value = hora;
-        document.getElementById('field-peso').value = pesoNeto;
+        document.getElementById('field-peso').value = pesoNeto; // Ahora se muestra como entero
         document.getElementById('field-obs').value = "";
         return true;
 
