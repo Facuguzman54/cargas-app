@@ -77,57 +77,62 @@ function handleModeChange() {
     focusMainInput();
 }
 
-// MOTOR DE DESGLOSE DE CÓDIGO (Interleaved 2 of 5 - 23 dígitos)
+// MOTOR DE DESGLOSE DE CÓDIGO (Estructura de posiciones fijas de Planta)
 function processBarcodeString(rawData) {
-    const code = rawData.replace(/\D/g, '').trim();
+    // 1. Limpieza de caracteres: nos quedamos solo con los números
+    let code = rawData.replace(/\D/g, '').trim();
+    
+    // 2. Control de inicio: Aseguramos que empiece con "0"
+    if (!code.startsWith('0')) {
+        document.getElementById('field-obs').value = "Error: Debe empezar con 0";
+        return false;
+    }
 
-    if (code.length < 20) {
-        document.getElementById('field-obs').value = "Código corto (" + code.length + " dígs)";
+    // 3. Quitar el último dígito verificador/random
+    code = code.slice(0, -1); 
+
+    // Validación de longitud mínima segura con el código ya recortado (21 fijos + nro cabezal)
+    if (code.length < 22) {
+        document.getElementById('field-obs').value = "Código corto tras recorte";
         return false;
     }
 
     try {
-        const yy = code.substring(1, 3);
-        const mm = code.substring(3, 5);
-        const dd = code.substring(5, 7);
-        const hr = code.substring(7, 9);
-        const min = code.substring(9, 11);
+        // CORTE DE BLOQUES FIJOS:
+        // Estructura: 0 [YY][MM][DD] [HH][MM] [PROD] [PESO] [CAB] [NRO_CABEZAL]
+        // Ejemplo:    0  26  03  01   06  22   7242   1201   01   7917
 
+        // Extracción de Fecha y Lote (Posiciones indexadas fijas)
+        const yy = code.substring(1, 3);   // Año (ej: "26")
+        const mm = code.substring(3, 5);   // Mes (ej: "03")
+        const dd = code.substring(5, 7);   // Día (ej: "01")
+        
         const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
-        const lote = `${dd}${mm}${yy}`;
+        const lote = `${dd}${mm}${yy}`;   // Formato DDMMYY para el Lote
+
+        // Extracción de Hora y Minutos
+        const hr = code.substring(7, 9);   // Hora (ej: "06")
+        const min = code.substring(9, 11); // Minutos (ej: "22")
         const hora = `${hr}:${min}`;
 
-        const codigoSinVerificador = code.slice(0, -1);
+        // Extracción de Peso Neto (Siempre ocupa 4 posiciones: de la 15 a la 19)
+        const rawPeso = code.substring(15, 19); // ej: "1201" o "2400"
+        const pesoNeto = (parseFloat(rawPeso) / 10).toFixed(1); // ej: "120.1" o "240.0"
 
-        let pesoNeto = "0.0";
-        let cabezal = "-";
-
-        const indiceB = codigoSinVerificador.lastIndexOf("02");
-        const indiceA = codigoSinVerificador.lastIndexOf("01");
-
-        if (indiceB !== -1 && indiceB > indiceA && indiceB > 11) {
-            const nroCabezal = codigoSinVerificador.substring(indiceB + 2);
-            cabezal = `B${parseInt(nroCabezal)}`;
-
-            const bloquePeso = codigoSinVerificador.substring(15, indiceB);
-            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
-        } else if (indiceA !== -1 && indiceA > 11) {
-            const nroCabezal = codigoSinVerificador.substring(indiceA + 2);
-            cabezal = `A${parseInt(nroCabezal)}`;
-
-            const bloquePeso = codigoSinVerificador.substring(15, indiceA);
-            pesoNeto = bloquePeso.length === 3 ? (parseFloat(bloquePeso)).toFixed(1) : (parseFloat(bloquePeso) / 10).toFixed(1);
-        } else {
-            const elResto = code.substring(11);
-            const bloquePeso = elResto.substring(4, 8);
-            pesoNeto = bloquePeso;
-
-            const identificadorLetra = elResto.substring(8, 9);
-            const letra = identificadorLetra === "1" ? "A" : (identificadorLetra === "2" ? "B" : "X");
-            const nroCabezal = elResto.substring(9);
-            cabezal = `${letra}${parseInt(nroCabezal)}`;
+        // Extracción de Cabezal e Identificador (Posiciones 19 y 20)
+        const tipoCabezal = code.substring(19, 21); // "01" o "02" (o históricamente "1" o "2")
+        let letra = "X";
+        if (tipoCabezal === "01" || tipoCabezal === "1") {
+            letra = "A";
+        } else if (tipoCabezal === "02" || tipoCabezal === "2") {
+            letra = "B";
         }
+        
+        // El Número de Cabezal arranca SIEMPRE en la posición 21 y se estira hasta el final
+        const nroCabezal = code.substring(21); // Agarra "7917", "16324", etc.
+        const cabezal = `${letra}${parseInt(nroCabezal)}`; // limpia ceros basura a la izquierda si los hubiera
 
+        // 4. Inyección limpia y directa en los inputs de la pantalla
         document.getElementById('field-lote').value = lote;
         document.getElementById('field-cabezal').value = cabezal;
         document.getElementById('field-fecha').value = fechaFab;
@@ -135,8 +140,9 @@ function processBarcodeString(rawData) {
         document.getElementById('field-peso').value = pesoNeto;
         document.getElementById('field-obs').value = "";
         return true;
+
     } catch (e) {
-        document.getElementById('field-obs').value = "Error en análisis por reverso.";
+        document.getElementById('field-obs').value = "Error en procesamiento rígido.";
         return false;
     }
 }
