@@ -78,93 +78,71 @@ function handleModeChange() {
 }
 
 
-// MOTOR DE DESGLOSE DE CÓDIGO (Normalizado sin cero inicial)
+// MOTOR DE DESGLOSE DE CÓDIGO (Lógica elástica basada en el largo del peso)
 function processBarcodeString(rawData) {
     // 1. Limpieza de caracteres: nos quedamos solo con los números
     let code = rawData.replace(/\D/g, '').trim();
-    
-    // 2. NORMALIZACIÓN: Si empieza con "0", se lo quitamos para que el año (YY) sea siempre la posición 0
-    if (code.startsWith('0')) {
-        code = code.substring(1);
+
+    // 2. NORMALIZACIÓN: Si NO empieza con "0", se lo agregamos obligatoriamente
+    if (!code.startsWith('0')) {
+        code = '0' + code;
     }
 
     // 3. Quitar el último dígito verificador/random del final
-    code = code.slice(0, -1); 
+    code = code.slice(0, -1);
 
-    // Validación de longitud mínima (ahora que sacamos el 0 y el verificador, el bloque fijo mide 20 dígitos + nro cabezal)
-    if (code.length < 21) {
-        document.getElementById('field-obs').value = "Código incompleto o inválido";
+    // Validación de longitud mínima de seguridad
+    if (code.length < 22) {
+        document.getElementById('field-obs').value = "Código corto o inválido";
         return false;
     }
 
     try {
-        // NUEVA ESTRUCTURA DE POSICIONES ABSOLUTAS (Arrancando directo en el Año YY):
-        // Ejemplo Tambor sin 0 y sin fin: [26][03][21] [16][14] [9402] [2410] [21] [6324]
-        // Ejemplo Totem sin fin:         [26][04][03] [20][05] [7242] [1202] [02] [21378]
-        //
-        // Posiciones exactas del string:
-        // [0-1]   -> Año (YY)
-        // [2-3]   -> Mes (MM)
-        // [4-5]   -> Día (DD)
-        // [6-7]   -> Hora (HH)
-        // [8-9]   -> Minutos (MM)
-        // [10-13] -> Código Producto (4 dígitos)
-        // [14-17] -> Peso Neto (4 dígitos)
-        // [18-19] -> Tipo Cabezal (01 o 02)
-        // [20 en adelante] -> Número de Cabezal (Variable)
+        // ESTRUCTURA DESDE EL INICIO (Siempre fija hasta la posición 15)
+        // 0 (0) | YY (1-2) | MM (3-4) | DD (5-6) | HH (7-8) | MM (9-10) | PROD (11-14)
+        const yy = code.substring(1, 3);   // "26"
+        const mm = code.substring(3, 5);   // "03" o "04"
+        const dd = code.substring(5, 7);   // "21" o "03"
 
-        // Extracción de Fecha y Lote
-        const yy = code.substring(0, 2);   // "26"
-        const mm = code.substring(2, 4);   // "03" o "04"
-        const dd = code.substring(4, 6);   // "21" o "03"
-        
         const fechaFab = `${parseInt(dd)}/${parseInt(mm)}/20${yy}`;
         const lote = `${dd}${mm}${yy}`;   // Formato DDMMYY para el Lote
 
-        // Extracción de Hora y Minutos
-        const hr = code.substring(6, 8);   
-        const min = code.substring(8, 10); 
+        const hr = code.substring(7, 9);   // Hora
+        const min = code.substring(9, 11); // Minutos
         const hora = `${hr}:${min}`;
 
-        // Extracción de Peso Neto (Siempre de la posición 14 a la 18 -> 4 dígitos)
-        // Para el tambor cortará "2410". Al hacer el ajuste para que sea entero de tres dígitos reales en kilos (241):
-        // Si el peso termina en cero y necesitas que figure 241, dividimos por 10.
-        // Si tu balanza para Totem registra "1202" directo como 1202 kg enteros, evaluamos la longitud:
-        const rawPeso = code.substring(14, 18); // Tambor: "2410" | Totem: "1202"
-        
-        let pesoNeto = parseInt(rawPeso);
-        // Si el valor ronda los 2000 o menos pero sabemos que los tambores no pasan los 300kg, 
-        // y el código de barra le agrega un cero al final (ej: 2410 significa 241 kg)
-        if (pesoNeto > 2000) {
-            // Es un valor de tambor con un cero extra al final (ej: 2410 -> 241)
-            pesoNeto = Math.round(pesoNeto / 10);
-        }
+        // ESTRUCTURA DESDE EL FINAL (Para absorber la diferencia de dígitos del peso)
+        // Los últimos 5 dígitos son SIEMPRE el número de cabezal (ej: "21378" o "16324")
+        const nroCabezal = code.slice(-5);
 
-        // Extracción de Cabezal (Posición 18 y 19 -> 2 dígitos)
-        // Tambor: "21" (el '02' viejo se corrió) -> Ahora con el desfase corregido va a leer "02" exacto.
-        const tipoCabezal = code.substring(18, 20); 
+        // Los 2 dígitos anteriores a esos 5 son SIEMPRE el tipo de cabezal (ej: "02")
+        const tipoCabezal = code.slice(-7, -5);
+
         let letra = "X";
-        if (tipoCabezal === "01" || tipoCabezal === "1") {
+        if (tipoCabezal === "01") {
             letra = "A";
-        } else if (tipoCabezal === "02" || tipoCabezal === "2") {
+        } else if (tipoCabezal === "02") {
             letra = "B";
         }
-        
-        // El Número de Cabezal arranca siempre en la posición 20 hasta el final
-        const nroCabezal = code.substring(20); 
-        const cabezal = `${letra}${parseInt(nroCabezal)}`; 
+        const cabezal = `${letra}${parseInt(nroCabezal)}`;
+
+        // EL PESO NETO ES LO QUE QUEDA EN EL MEDIO:
+        // Arranca en la posición fija 15 (donde termina el código de producto) 
+        // y llega hasta donde empieza el tipo de cabezal (7 dígitos antes del final).
+        const rawPeso = code.substring(15, code.length - 7);
+        const pesoNeto = parseInt(rawPeso); // Devuelve 1202 o 241 directo como entero puro
 
         // 4. Inyección limpia en la pantalla
         document.getElementById('field-lote').value = lote;
         document.getElementById('field-cabezal').value = cabezal;
         document.getElementById('field-fecha').value = fechaFab;
         document.getElementById('field-hora').value = hora;
-        document.getElementById('field-peso').value = pesoNeto; 
+        document.getElementById('field-peso').value = pesoNeto;
         document.getElementById('field-obs').value = "";
         return true;
 
     } catch (e) {
-        document.getElementById('field-obs').value = "Error en normalización por año.";
+        document.getElementById('field-obs').value = "Error en desglose mixto.";
         return false;
     }
 }
