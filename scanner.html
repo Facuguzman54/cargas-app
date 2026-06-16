@@ -32,7 +32,7 @@
                     <ol class="mt-2 text-sm text-gray-700 list-decimal list-inside space-y-2">
                         <li>Para emparejar, escaneá con el lector Zebra la imagen de Bluetooth que aparece abajo.</li>
                         <div class="w-full flex items-center justify-center mt-2">
-                            <img src="assets/bluetooth.jpeg" alt="Bluetooth Zebra" class="scanner-image max-w-xs">
+                            <img src="https://support.zebra.com/support/servlet/rtaImage?eid=ka16S000000OK6R&feoid=00N0H00000K2Eou&refid=0EM0H000000GRv0" alt="Bluetooth Zebra" class="scanner-image max-w-xs">
                         </div>
                         <li>En tu Android abre <strong>Ajustes → Dispositivos conectados → Emparejar nuevo
                                 dispositivo</strong> y activa Bluetooth.</li>
@@ -62,9 +62,35 @@
                             escáner no esté en modo teclado bloqueado.</li>
                     </ul>
                 </div>
+            </div>
 
+            <hr class="my-6 border-gray-200">
 
+            <div class="flex flex-col gap-4 items-start">
+                <div class="w-full">
+                    <h2 class="text-lg font-semibold text-gray-800">Restablecer a modo USB</h2>
+                    <p class="mt-2 text-sm text-gray-600">Para volver el escáner al modo normal por USB (sin Bluetooth), escaneá estos códigos QR en orden:</p>
+                    
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <h3 class="font-semibold text-gray-700 mb-2">Paso 1: Restablecer configuración de fábrica</h3>
+                            <div class="w-full flex items-center justify-center">
+                                <img src="https://support.zebra.com/support/servlet/rtaImage?eid=ka16S000000OK6R&feoid=00N0H00000K2Eou&refid=0EM0H000000GRug" alt="Set Factory Defaults" class="scanner-image max-w-xs">
+                            </div>
+                        </div>
 
+                        <div>
+                            <h3 class="font-semibold text-gray-700 mb-2">Paso 2: Agregar ENTER después del escaneo</h3>
+                            <div class="w-full flex items-center justify-center">
+                                <img src="https://www.gatekey.com/uploads/1/0/8/7/10871054/published/zebra-carriage-return.png?1647278401" alt="Carriage Return" class="scanner-image max-w-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="mt-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <strong>Nota:</strong> Después de escanear estos QR, el escáner volverá a modo USB estándar y agregará automáticamente un ENTER al final de cada lectura.
+                    </p>
+                </div>
             </div>
 
             <div class="mt-6 flex justify-end gap-2">
