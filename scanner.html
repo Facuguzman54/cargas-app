@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Instrucciones Conexión Zebra</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="font-sans text-gray-800 antialiased min-h-screen pb-12">
+    <header class="bg-blue-900 text-white shadow-md p-4 sticky top-0 z-50">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">Conexión Zebra</h1>
+                <p class="text-xs text-blue-200">Guía de emparejado Bluetooth — Android</p>
+            </div>
+            <div class="bg-blue-800 px-3 py-1.5 rounded-lg text-right">
+                <span class="text-xs block text-blue-300 font-semibold uppercase">Ayuda</span>
+                <span class="text-sm font-bold">Zebra</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto p-4 space-y-4">
+
+        <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+            <div class="flex flex-col gap-4 items-start">
+                <div class="w-full">
+                    <h2 class="text-lg font-semibold text-gray-800">Pasos para emparejar (Android)</h2>
+                    <ol class="mt-2 text-sm text-gray-700 list-decimal list-inside space-y-2">
+                        <li>Para emparejar, escaneá con el lector Zebra la imagen de Bluetooth que aparece abajo.</li>
+                        <div class="w-full flex items-center justify-center mt-2">
+                            <img src="https://support.zebra.com/support/servlet/rtaImage?eid=ka16S000000OK6R&feoid=00N0H00000K2Eou&refid=0EM0H000000GRv0" alt="Bluetooth Zebra" class="scanner-image max-w-xs">
+                        </div>
+                        <li>En tu Android abre <strong>Ajustes → Dispositivos conectados → Emparejar nuevo
+                                dispositivo</strong> y activa Bluetooth.</li>
+                        <li>Selecciona el escáner Zebra cuando aparezca. Si pide PIN, prueba <strong>0000</strong> o
+                            <strong>1234</strong>.</li>
+                        <li>En algunos modelos seleccioná el perfil <strong>HID (Keyboard)</strong> o el perfil por
+                            defecto; el modo HID envía las lecturas como si fueran tecleo.</li>
+                        <li>Si el escáner usa BLE y la app necesita acceder al dispositivo, habilitá los permisos de
+                            ubicación (Android 6+) y Bluetooth en la app del teléfono.</li>
+                    </ol>
+
+                    <h3 class="mt-4 font-semibold">Modo de Uso en Android</h3>
+                    <ul class="mt-2 text-sm text-gray-700 list-disc list-inside">
+                        <li>Asegurate que el campo principal (<strong>LECTURA DE ETIQUETA</strong>) tenga el foco antes
+                            de escanear; la entrada recibirá el texto automáticamente si el escáner funciona en modo
+                            teclado.</li>
+            
+                        <li>Si no ingresa texto, verificá que el teclado virtual no esté bloqueando la entrada o la
+                            configuración de accesibilidad del dispositivo.</li>
+                    </ul>
+
+                    <h3 class="mt-4 font-semibold">Problemas comunes</h3>
+                    <ul class="mt-2 text-sm text-gray-700 list-disc list-inside">
+                        <li>El escáner no aparece: apaga/enciende Bluetooth en el equipo y reinicia el escáner.</li>
+                        <li>Doble emparejamiento: elimina entradas antiguas del Bluetooth y empareja de nuevo.</li>
+                        <li>Escanea pero no se ingresa nada: confirma que el cursor esté en el campo de entrada o que el
+                            escáner no esté en modo teclado bloqueado.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <hr class="my-6 border-gray-200">
+
+            <div class="flex flex-col gap-4 items-start">
+                <div class="w-full">
+                    <h2 class="text-lg font-semibold text-gray-800">Restablecer a modo USB</h2>
+                    <p class="mt-2 text-sm text-gray-600">Para volver el escáner al modo normal por USB (sin Bluetooth), escaneá estos códigos QR en orden:</p>
+                    
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <h3 class="font-semibold text-gray-700 mb-2">Paso 1: Restablecer configuración de fábrica</h3>
+                            <div class="w-full flex items-center justify-center">
+                                <img src="https://support.zebra.com/support/servlet/rtaImage?eid=ka16S000000OK6R&feoid=00N0H00000K2Eou&refid=0EM0H000000GRug" alt="Set Factory Defaults" class="scanner-image max-w-xs">
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="font-semibold text-gray-700 mb-2">Paso 2: Agregar ENTER después del escaneo</h3>
+                            <div class="w-full flex items-center justify-center">
+                                <img src="https://www.gatekey.com/uploads/1/0/8/7/10871054/published/zebra-carriage-return.png?1647278401" alt="Carriage Return" class="scanner-image max-w-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="mt-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <strong>Nota:</strong> Después de escanear estos QR, el escáner volverá a modo USB estándar y agregará automáticamente un ENTER al final de cada lectura.
+                    </p>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+                <a href="index.html"
+                    class="px-4 py-2 bg-gray-100 rounded-lg border border-gray-200 hover:bg-gray-200">Volver</a>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

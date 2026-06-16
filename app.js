@@ -48,6 +48,11 @@ window.addEventListener('DOMContentLoaded', () => {
     barcodeInput.addEventListener('blur', function () {
         triggerBarcodeProcessing(true);
     });
+
+    // Register service worker for PWA installability
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js').catch(() => { /* fail silently */ });
+    }
 });
 
 function focusMainInput() {
