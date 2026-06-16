@@ -268,6 +268,6 @@ function exportToExcel() {
     ];
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `Planilla_Produccion_${dateStr}.xlsx`);
+    XLSX.writeFile(workbook, `Detalle_De_Carga_${dateStr}.xlsx`);
     focusMainInput();
 }
