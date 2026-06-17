@@ -230,13 +230,25 @@ function updateUI() {
         return;
     }
 
+    const cabezalOccurrences = {};
+    const secondOccurrenceIndexes = new Set();
+    masterData.forEach((item, index) => {
+        const cabezalKey = item.cabezal || "";
+        cabezalOccurrences[cabezalKey] = (cabezalOccurrences[cabezalKey] || 0) + 1;
+        if (cabezalOccurrences[cabezalKey] === 2) {
+            secondOccurrenceIndexes.add(index);
+        }
+    });
+
     let html = "";
     for (let i = masterData.length - 1; i >= 0; i--) {
         const item = masterData[i];
+        const isSecondOccurrence = secondOccurrenceIndexes.has(i);
+        const rowClass = isSecondOccurrence ? "bg-red-100 hover:bg-red-200 border-b border-red-300" : "hover:bg-gray-100 border-b";
         html += `
-            <tr class="hover:bg-gray-100 border-b">
+            <tr class="${rowClass}">
                 <td class="p-2 font-bold text-blue-900">${item.pallet}</td>
-                <td class="p-2 font-mono">${item.cabezal}</td>
+                <td class="p-2 font-mono ${isSecondOccurrence ? "font-bold text-red-800" : ""}">${item.cabezal}</td>
                 <td class="p-2 font-semibold">${item.pesoNeto} kg</td>
                 <td class="p-2 text-center">
                     <button onclick="removeRow(${i})" class="text-red-500 font-bold px-2">✕</button>
