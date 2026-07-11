@@ -303,8 +303,19 @@
                 }
                 // Cualquier otra falla (gesto perdido, política del dispositivo,
                 // iframe sin permiso, etc.) no debe dejar al operario sin poder
-                // sacar el reporte: caemos a descarga clásica en vez de tirar error.
-                console.warn('ReportsStorage: share() falló, uso fallback de descarga.', err.name, err.message);
+                // sacar el reporte: caemos a descarga clásica en vez de tirar error,
+                // pero armamos un diagnóstico corto para mostrar en el toast y
+                // no depender de conectar el equipo a devtools en planta.
+                const gestureLost = !(navigator.userActivation && navigator.userActivation.isActive);
+                const inIframe = window.self !== window.top;
+                const diagnosticHint = gestureLost
+                    ? 'gesto de click perdido'
+                    : inIframe
+                        ? 'bloqueado por iframe/política'
+                        : 'bloqueado por el dispositivo (posible política MDM)';
+                console.warn('ReportsStorage: share() falló → fallback descarga.', err.name, err.message, diagnosticHint);
+                downloadFileFallback(shareableFile);
+                return { success: true, method: 'download', shareFailed: true, diagnosticHint };
             }
         }
 

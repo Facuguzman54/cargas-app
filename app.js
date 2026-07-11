@@ -504,7 +504,10 @@ async function handleShareReport(fileName) {
         const result = await ReportsStorage.shareReport(fileName);
         if (result.cancelled) return; // el usuario cerró el share sheet, no mostramos error
         if (result.method === 'download') {
-            showToast('Descargado (tu navegador no soporta compartir archivos) ✓');
+            const motivo = result.shareFailed
+                ? `no se pudo compartir: ${result.diagnosticHint}`
+                : 'tu navegador no soporta compartir archivos';
+            showToast(`Descargado (${motivo}) ✓`);
         } else {
             showToast('Reporte compartido ✓');
         }
