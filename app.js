@@ -297,8 +297,14 @@ async function exportToExcel() {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     });
 
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `reporte_produccion_${dateStr}.xlsx`;
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    // dateStr se mantiene en formato ISO (YYYY-MM-DD): es el que usa
+    // "Mis Reportes" para ordenar y para el placeholder de búsqueda.
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const fileName = `Detalle_Carga_${dd}${mm}${yyyy}.xlsx`;
 
     const packagingMode = document.getElementById('packaging-mode').value;
     const palletCount = new Set(masterData.map(i => i.pallet)).size;
