@@ -260,7 +260,13 @@ function updateUI() {
     tbody.innerHTML = html;
 }
 
-function exportToExcel() {
+/**
+ * Genera el .xlsx en memoria (sin tocarlo aún) y lo guarda en la PWA
+ * (OPFS + IndexedDB) en lugar de forzar la descarga clásica al sistema
+ * de archivos del celular. El usuario después lo gestiona desde
+ * "Mis Reportes" y decide ahí cuándo exportarlo/compartirlo.
+ */
+async function exportToExcel() {
     if (masterData.length === 0) {
         alert("No hay registros cargados.");
         return;
@@ -284,7 +290,251 @@ function exportToExcel() {
         { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 24 }
     ];
 
+    // "array" nos da un ArrayBuffer, que envolvemos en un Blob con el MIME
+    // correcto de xlsx (no lo escribimos a disco: se queda en memoria).
+    const wbArray = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `Detalle_De_Carga_${dateStr}.xlsx`);
+    const fileName = `reporte_produccion_${dateStr}.xlsx`;
+
+    const packagingMode = document.getElementById('packaging-mode').value;
+    const palletCount = new Set(masterData.map(i => i.pallet)).size;
+    const totalWeight = masterData.reduce((sum, i) => sum + (parseFloat(i.pesoNeto) || 0), 0);
+
+    // Preview liviano para la card de "Mis Reportes": no guardamos todo el
+    // detalle acá (eso vive en el .xlsx dentro de OPFS), solo un puñado de
+    // filas representativas. Nota: la app no tiene un campo "Producto"
+    // propio, así que usamos Cabezal como identificador de producto/línea,
+    // y Peso Neto como "cantidad" de esa fila.
+    const itemsPreview = masterData.slice(0, 6).map(i => ({
+        lote: i.lote,
+        cabezal: i.cabezal,
+        pesoNeto: i.pesoNeto
+    }));
+
+    try {
+        await ReportsStorage.saveReport(blob, {
+            fileName,
+            date: dateStr,
+            packagingMode,
+            items: itemsPreview,
+            palletCount,
+            totalWeight
+        });
+
+        showToast(`Reporte guardado en "Mis Reportes" ✓`);
+
+        // Si la vista de reportes está abierta, la refrescamos al toque.
+        if (!document.getElementById('reports-view').classList.contains('hidden')) {
+            refreshReportsList();
+        }
+    } catch (err) {
+        console.error(err);
+        alert("No se pudo guardar el reporte localmente: " + err.message);
+    }
+
     focusMainInput();
+}
+
+/**
+ * Pequeño toast no bloqueante (a diferencia de alert()) para confirmar
+ * acciones sin interrumpir el flujo de escaneo del operario.
+ */
+function showToast(message) {
+    const existing = document.getElementById('app-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.className = 'app-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('app-toast-visible'));
+    setTimeout(() => {
+        toast.classList.remove('app-toast-visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 2400);
+}
+
+/* =========================================================================
+ * SECCIÓN "MIS REPORTES"
+ * Vista de historial que lee IndexedDB (rápido) y solo toca el OPFS cuando
+ * el usuario aprieta "Exportar / Compartir" en una card puntual.
+ * ========================================================================= */
+
+let reportsSearchDebounceId = null;
+
+function switchView(viewName) {
+    const captureView = document.getElementById('capture-view');
+    const reportsView = document.getElementById('reports-view');
+    const navCapture = document.getElementById('nav-btn-capture');
+    const navReports = document.getElementById('nav-btn-reports');
+
+    const goingToReports = viewName === 'reports';
+
+    captureView.classList.toggle('hidden', goingToReports);
+    reportsView.classList.toggle('hidden', !goingToReports);
+
+    navCapture.classList.toggle('nav-btn-active', !goingToReports);
+    navReports.classList.toggle('nav-btn-active', goingToReports);
+
+    if (goingToReports) {
+        refreshReportsList();
+    } else {
+        focusMainInput();
+    }
+}
+
+async function refreshReportsList() {
+    const listEl = document.getElementById('reports-list');
+    const searchText = document.getElementById('reports-search').value;
+
+    listEl.setAttribute('aria-busy', 'true');
+
+    try {
+        const reports = await ReportsStorage.listReports({
+            searchText,
+            sortOrder: 'desc' // más reciente primero
+        });
+        renderReportsList(reports);
+    } catch (err) {
+        console.error(err);
+        listEl.innerHTML = `<p class="text-center text-red-500 text-sm p-4">Error al leer los reportes guardados: ${err.message}</p>`;
+    } finally {
+        listEl.setAttribute('aria-busy', 'false');
+    }
+}
+
+// Debounce del buscador para no relanzar la consulta a IndexedDB en cada tecla
+function onReportsSearchInput() {
+    clearTimeout(reportsSearchDebounceId);
+    reportsSearchDebounceId = setTimeout(refreshReportsList, 200);
+}
+
+function renderReportsList(reports) {
+    const listEl = document.getElementById('reports-list');
+
+    if (reports.length === 0) {
+        listEl.innerHTML = `
+            <p class="text-center text-gray-400 italic text-sm p-6">
+                No se encontraron reportes guardados.
+            </p>`;
+        return;
+    }
+
+    listEl.innerHTML = reports.map(reportToCardHTML).join('');
+}
+
+function reportToCardHTML(report) {
+    const isTotem = report.packagingMode === 'totem';
+    const badgeLabel = isTotem ? 'Tótem' : 'Tambores';
+    const badgeClass = isTotem
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-blue-100 text-blue-700';
+
+    const previewRows = report.items.slice(0, 3).map(item => `
+        <tr class="text-[11px] text-gray-600">
+            <td class="py-0.5 pr-2 font-mono">${escapeHTML(item.lote || '-')}</td>
+            <td class="py-0.5 pr-2 font-mono">${escapeHTML(item.cabezal || '-')}</td>
+            <td class="py-0.5 text-right">${escapeHTML(String(item.pesoNeto ?? '-'))} kg</td>
+        </tr>
+    `).join('');
+
+    const sizeKb = report.sizeBytes ? (report.sizeBytes / 1024).toFixed(0) + ' KB' : '';
+
+    // fileName se usa como identificador único (data-file-name) para no
+    // tener que exponer un id numérico extra: ya es único por diseño.
+    return `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-3" data-file-name="${escapeHTML(report.fileName)}">
+            <div class="flex justify-between items-start mb-2">
+                <div>
+                    <p class="text-sm font-bold text-gray-800">${escapeHTML(report.date)}</p>
+                    <p class="text-[11px] text-gray-400 font-mono truncate max-w-[180px]">${escapeHTML(report.fileName)}</p>
+                </div>
+                <span class="text-xs font-bold px-2 py-1 rounded-lg ${badgeClass}">${badgeLabel}</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 text-center bg-gray-50 rounded-lg py-2 mb-2">
+                <div>
+                    <p class="text-[10px] text-gray-400 uppercase font-semibold">Pallets</p>
+                    <p class="text-sm font-bold text-blue-900">${report.palletCount}</p>
+                </div>
+                <div>
+                    <p class="text-[10px] text-gray-400 uppercase font-semibold">Peso Total</p>
+                    <p class="text-sm font-bold text-blue-900">${report.totalWeight.toFixed(1)} kg</p>
+                </div>
+                <div>
+                    <p class="text-[10px] text-gray-400 uppercase font-semibold">Tamaño</p>
+                    <p class="text-sm font-bold text-blue-900">${sizeKb}</p>
+                </div>
+            </div>
+
+            ${previewRows ? `
+            <table class="w-full mb-3">
+                <thead>
+                    <tr class="text-[10px] text-gray-400 uppercase font-semibold">
+                        <td class="pr-2">Lote</td>
+                        <td class="pr-2">Cabezal</td>
+                        <td class="text-right">Peso</td>
+                    </tr>
+                </thead>
+                <tbody>${previewRows}</tbody>
+            </table>` : ''}
+
+            <div class="flex gap-2">
+                <button onclick="handleShareReport('${escapeJS(report.fileName)}')"
+                    class="flex-1 bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold py-2.5 rounded-lg shadow transition-colors">
+                    Exportar / Compartir
+                </button>
+                <button onclick="handleDeleteReport('${escapeJS(report.fileName)}')"
+                    class="px-3 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold py-2.5 rounded-lg border border-red-200 transition-colors">
+                    Borrar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function handleShareReport(fileName) {
+    try {
+        const result = await ReportsStorage.shareReport(fileName);
+        if (result.cancelled) return; // el usuario cerró el share sheet, no mostramos error
+        if (result.method === 'download') {
+            showToast('Descargado (tu navegador no soporta compartir archivos) ✓');
+        } else {
+            showToast('Reporte compartido ✓');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('No se pudo exportar el reporte: ' + err.message);
+    }
+}
+
+async function handleDeleteReport(fileName) {
+    if (!confirm(`¿Borrar el reporte "${fileName}"? Esta acción no se puede deshacer.`)) return;
+
+    try {
+        await ReportsStorage.deleteReport(fileName);
+        showToast('Reporte borrado ✓');
+        refreshReportsList();
+    } catch (err) {
+        console.error(err);
+        alert('No se pudo borrar el reporte: ' + err.message);
+    }
+}
+
+// Sanitización básica para evitar inyectar HTML/JS al armar las cards
+// dinámicamente a partir de datos guardados por el propio usuario.
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function escapeJS(str) {
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }

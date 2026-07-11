@@ -1,9 +1,10 @@
-const CACHE_NAME = 'app-cargas-v1';
+const CACHE_NAME = 'app-cargas-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/scanner.html',
   '/styles.css',
+  '/reports-storage.js',
   '/app.js'
 ];
 

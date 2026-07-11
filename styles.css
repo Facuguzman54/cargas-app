@@ -11,3 +11,43 @@ body {
     border-radius: 8px;
     border: 1px solid #e6eef8;
 }
+
+/* Nav tabs (Carga / Mis Reportes) */
+.nav-btn {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #bfdbfe;
+}
+.nav-btn:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+.nav-btn-active {
+    background-color: #ffffff;
+    color: #1e3a8a;
+}
+.nav-btn-active:hover {
+    background-color: #ffffff;
+}
+
+/* Toast de confirmación no bloqueante */
+.app-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 12px);
+    background-color: #0f172a;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 100;
+    max-width: 90vw;
+    text-align: center;
+}
+.app-toast-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
