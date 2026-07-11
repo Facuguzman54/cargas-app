@@ -301,7 +301,10 @@
                 if (err.name === 'AbortError') {
                     return { success: false, method: 'share', cancelled: true };
                 }
-                throw new Error('SHARE_FAILED: ' + err.message);
+                // Cualquier otra falla (gesto perdido, política del dispositivo,
+                // iframe sin permiso, etc.) no debe dejar al operario sin poder
+                // sacar el reporte: caemos a descarga clásica en vez de tirar error.
+                console.warn('ReportsStorage: share() falló, uso fallback de descarga.', err.name, err.message);
             }
         }
 
