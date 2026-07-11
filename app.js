@@ -487,6 +487,7 @@ function reportToCardHTML(report) {
 
             <div class="flex gap-2">
                 <button onclick="handleShareReport('${escapeJS(report.fileName)}')"
+                    onpointerdown="ReportsStorage.prefetchReportFile('${escapeJS(report.fileName)}')"
                     class="flex-1 bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold py-2.5 rounded-lg shadow transition-colors">
                     Exportar / Compartir
                 </button>

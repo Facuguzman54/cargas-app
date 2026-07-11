@@ -274,6 +274,35 @@
     // -------------------------------------------------------------------
     const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+    // Caché en memoria para "precalentar" el archivo ANTES del click real.
+    // El motivo: navigator.share() exige que el gesto del usuario siga
+    // "activo" en el momento exacto de la llamada. Si entre el click y el
+    // share() hay que ir a buscar el archivo al OPFS (3 handles async
+    // encadenados: directorio → archivo → File), ese viaje de ida y vuelta
+    // consume tiempo real de IPC y el gesto se pierde ANTES de llegar al
+    // share(). Precargando en pointerdown (que dispara antes que click)
+    // el archivo ya está en memoria cuando el click realmente ocurre, y
+    // share() se puede invocar sin ningún await previo.
+    const fileCache = new Map();
+
+    /**
+     * Llamar en pointerdown/touchstart del botón de compartir, ANTES del
+     * click, para que el archivo esté listo en memoria cuando llegue el
+     * click real. No consume el gesto del usuario porque no llama a
+     * ninguna API que lo requiera (solo lee del OPFS).
+     */
+    async function prefetchReportFile(fileName) {
+        if (fileCache.has(fileName)) return;
+        try {
+            const file = await readFileFromOPFS(fileName);
+            fileCache.set(fileName, file);
+        } catch (err) {
+            // Si falla el prefetch no pasa nada grave: shareReport() va a
+            // intentar leerlo de nuevo igual, solo que sin la ventaja de
+            // la caché (mismo comportamiento que antes de este cambio).
+        }
+    }
+
     /**
      * Intenta compartir el archivo con navigator.share (apps nativas).
      * Si el navegador no soporta compartir archivos, cae en una descarga
@@ -281,7 +310,13 @@
      * @returns {Promise<{success:boolean, method:'share'|'download', cancelled?:boolean}>}
      */
     async function shareReport(fileName) {
-        const file = await getReportFile(fileName);
+        // Si ya está precargado por prefetchReportFile(), lo usamos directo
+        // sin ningún await de por medio (gesto del click intacto).
+        let file = fileCache.get(fileName);
+        fileCache.delete(fileName);
+        if (!file) {
+            file = await getReportFile(fileName); // fallback si no hubo prefetch a tiempo
+        }
         const shareableFile = new File([file], fileName, {
             type: file.type || XLSX_MIME
         });
@@ -360,6 +395,7 @@
         saveReport,
         listReports,
         getReportFile,
+        prefetchReportFile,
         deleteReport,
         shareReport,
         getStorageEstimate
